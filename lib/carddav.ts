@@ -135,7 +135,7 @@ class SimpleCardDAVClient {
       console.log('Principal Response XML:', principalXml.substring(0, 500) + '...');
       
       // Extract addressbook-home-set URL
-      const homeSetMatch = principalXml.match(/<card:addressbook-home-set[^>]*><d:href[^>]*>(.*?)<\/d:href><\/card:addressbook-home-set>/s);
+      const homeSetMatch = principalXml.match(/<card:addressbook-home-set[^>]*><d:href[^>]*>(.*?)<\/d:href><\/card:addressbook-home-set>/);
       
       if (!homeSetMatch) {
         console.log('Keine addressbook-home-set gefunden, versuche direkten Zugriff...');
@@ -347,9 +347,9 @@ class SimpleCardDAVClient {
       
       // Check if it's an address book
       if (responseContent.includes('<card:addressbook')) {
-        const displayNameMatch = responseContent.match(/<d:displayname[^>]*>(.*?)<\/d:displayname>/s);
-        const hrefMatch = responseContent.match(/<d:href[^>]*>(.*?)<\/d:href>/s);
-        const descriptionMatch = responseContent.match(/<card:addressbook-description[^>]*>(.*?)<\/card:addressbook-description>/s);
+            const displayNameMatch = responseContent.match(/<d:displayname[^>]*>(.*?)<\/d:displayname>/);
+    const hrefMatch = responseContent.match(/<d:href[^>]*>(.*?)<\/d:href>/);
+    const descriptionMatch = responseContent.match(/<card:addressbook-description[^>]*>(.*?)<\/card:addressbook-description>/);
         
         if (displayNameMatch && hrefMatch) {
           books.push({
@@ -373,9 +373,9 @@ class SimpleCardDAVClient {
     while ((match = responseRegex.exec(xmlText)) !== null) {
       const responseContent = match[1];
       
-      const hrefMatch = responseContent.match(/<d:href[^>]*>(.*?)<\/d:href>/s);
-      const etagMatch = responseContent.match(/<d:getetag[^>]*>(.*?)<\/d:getetag>/s);
-      const vcardMatch = responseContent.match(/<card:address-data[^>]*>(.*?)<\/card:address-data>/s);
+          const hrefMatch = responseContent.match(/<d:href[^>]*>(.*?)<\/d:href>/);
+    const etagMatch = responseContent.match(/<d:getetag[^>]*>(.*?)<\/d:getetag>/);
+    const vcardMatch = responseContent.match(/<card:address-data[^>]*>(.*?)<\/card:address-data>/);
       
       if (hrefMatch && vcardMatch) {
         const vcard = vcardMatch[1].trim();
