@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CardDAVClient } from '@/lib/carddav';
+import { cardDAVClient } from '@/lib/carddav';
 
 export async function GET(request: NextRequest) {
   try {
-    const client = new CardDAVClient();
-    
     console.log('=== DEBUG INFO ===');
     console.log('Server URL:', process.env.CARDAV_SERVER_URL);
     console.log('Username:', process.env.CARDAV_USERNAME);
     console.log('Password set:', !!process.env.CARDAV_PASSWORD);
     console.log('Use Real CardDAV:', process.env.USE_REAL_CARDAV);
     
-    const contacts = await client.getContacts();
+    const contacts = await cardDAVClient.getContacts('Edeka Adressbuch');
     
     return NextResponse.json({
       success: true,
