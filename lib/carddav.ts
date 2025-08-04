@@ -318,10 +318,12 @@ class SimpleCardDAVClient {
         throw new Error(`CardDAV Request failed: ${response.status} ${response.statusText}`);
       }
 
-      const xmlText = await response.text();
-      console.log('Kontakte Response XML:', xmlText.substring(0, 300) + '...');
-      
-      const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
+             const xmlText = await response.text();
+       console.log('Kontakte Response XML (vollständig):', xmlText);
+       console.log('XML Länge:', xmlText.length);
+       console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+       
+       const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
       
       // Update cache
       this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
@@ -364,31 +366,49 @@ class SimpleCardDAVClient {
     return books;
   }
 
-  private parseContactsFromXML(xmlText: string, addressBookPath: string): CardDAVContact[] {
-    const contacts: CardDAVContact[] = [];
-    
-    const responseRegex = /<d:response[^>]*>(.*?)<\/d:response>/gs;
-    let match;
-    
-    while ((match = responseRegex.exec(xmlText)) !== null) {
-      const responseContent = match[1];
-      
-          const hrefMatch = responseContent.match(/<d:href[^>]*>(.*?)<\/d:href>/);
-    const etagMatch = responseContent.match(/<d:getetag[^>]*>(.*?)<\/d:getetag>/);
-    const vcardMatch = responseContent.match(/<card:address-data[^>]*>(.*?)<\/card:address-data>/);
-      
-      if (hrefMatch && vcardMatch) {
-        const vcard = vcardMatch[1].trim();
-        const contact = this.parseVCard(vcard, hrefMatch[1].trim(), etagMatch?.[1].trim());
-        
-        if (contact.name !== 'Unbekannt') {
-          contacts.push(contact);
-        }
-      }
-    }
-    
-    return contacts;
-  }
+     private parseContactsFromXML(xmlText: string, addressBookPath: string): CardDAVContact[] {
+     const contacts: CardDAVContact[] = [];
+     
+     console.log('Parsing XML für Kontakte...');
+     console.log('XML Länge:', xmlText.length);
+     
+     const responseRegex = /<d:response[^>]*>(.*?)<\/d:response>/gs;
+     let match;
+     let responseCount = 0;
+     
+     while ((match = responseRegex.exec(xmlText)) !== null) {
+       responseCount++;
+       const responseContent = match[1];
+       
+       console.log(`Response ${responseCount}:`, responseContent.substring(0, 200) + '...');
+       
+       const hrefMatch = responseContent.match(/<d:href[^>]*>(.*?)<\/d:href>/);
+       const etagMatch = responseContent.match(/<d:getetag[^>]*>(.*?)<\/d:getetag>/);
+       const vcardMatch = responseContent.match(/<card:address-data[^>]*>(.*?)<\/card:address-data>/);
+       
+       console.log('Href Match:', hrefMatch?.[1]);
+       console.log('ETag Match:', etagMatch?.[1]);
+       console.log('vCard Match vorhanden:', !!vcardMatch);
+       
+       if (hrefMatch && vcardMatch) {
+         const vcard = vcardMatch[1].trim();
+         console.log('vCard gefunden, Länge:', vcard.length);
+         console.log('vCard Inhalt:', vcard.substring(0, 200) + '...');
+         
+         const contact = this.parseVCard(vcard, hrefMatch[1].trim(), etagMatch?.[1].trim());
+         
+         if (contact.name !== 'Unbekannt') {
+           contacts.push(contact);
+           console.log('Kontakt hinzugefügt:', contact.name);
+         }
+       } else {
+         console.log('Keine vCard-Daten in dieser Response gefunden');
+       }
+     }
+     
+     console.log(`Insgesamt ${responseCount} Responses gefunden, ${contacts.length} Kontakte geparst`);
+     return contacts;
+   }
 
   private parseVCard(vcard: string, url: string, etag?: string): CardDAVContact {
     // Erweiterte vCard-Parsing für alle verfügbaren Felder
