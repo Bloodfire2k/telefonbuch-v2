@@ -1,6 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // appDir ist in Next.js 14 standardmäßig aktiviert
+  // Standalone output für Docker
+  output: 'standalone',
+  
+  // Experimentelle Features
+  experimental: {
+    // App Router ist jetzt standardmäßig aktiviert
+  },
+  
+  // Bilder-Optimierung
+  images: {
+    unoptimized: true
+  }
 }
 
 module.exports = nextConfig 
