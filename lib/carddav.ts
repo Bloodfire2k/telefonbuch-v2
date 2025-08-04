@@ -137,12 +137,12 @@ class SimpleCardDAVClient {
       // Extract addressbook-home-set URL
       const homeSetMatch = principalXml.match(/<card:addressbook-home-set[^>]*><d:href[^>]*>(.*?)<\/d:href><\/card:addressbook-home-set>/);
       
-      if (!homeSetMatch) {
-        console.log('Keine addressbook-home-set gefunden, versuche direkten Zugriff...');
-        // Fallback: Try to construct the addressbook URL
-        const addressBookUrl = this.serverUrl.replace('/principals/', '/addressbooks/');
-        return await this.getAddressBooksFromUrl(addressBookUrl);
-      }
+             if (!homeSetMatch) {
+         console.log('Keine addressbook-home-set gefunden, versuche direkten Zugriff...');
+         // Fallback: Try to construct the addressbook URL
+         const addressBookUrl = this.serverUrl.replace('/principals/users/', '/addressbooks/users/');
+         return await this.getAddressBooksFromUrl(addressBookUrl);
+       }
       
       const addressBookHomeUrl = homeSetMatch[1].trim();
       console.log('Gefundene addressbook-home-set URL:', addressBookHomeUrl);
@@ -294,13 +294,13 @@ class SimpleCardDAVClient {
           ? targetAddressBook.url 
           : `${this.serverUrl.split('/remote.php')[0]}${targetAddressBook.url}`;
         console.log(`Debug: Verwende URL aus Adressbüchern: ${fullUrl}`);
-      } else {
-        // Fallback: Konstruiere URL wie vorher
-        const addressBookPath = `${encodeURIComponent(addressBookName)}/`;
-        const addressBookBaseUrl = this.serverUrl.replace('/principals/', '/addressbooks/');
-        fullUrl = `${addressBookBaseUrl}${addressBookPath}`;
-        console.log(`Debug: Verwende Fallback-URL: ${fullUrl}`);
-      }
+             } else {
+         // Fallback: Konstruiere URL wie vorher
+         const addressBookPath = `${encodeURIComponent(addressBookName)}/`;
+         const addressBookBaseUrl = this.serverUrl.replace('/principals/users/', '/addressbooks/users/');
+         fullUrl = `${addressBookBaseUrl}${addressBookPath}`;
+         console.log(`Debug: Verwende Fallback-URL: ${fullUrl}`);
+       }
       
       console.log(`Versuche Kontakte zu laden von: ${fullUrl}`);
       
