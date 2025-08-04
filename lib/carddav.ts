@@ -446,7 +446,7 @@ class SimpleCardDAVClient {
       new RegExp(`^${field};[^:]*:(.*)$`, 'gim')
     ];
     
-    const matches = [];
+    const matches: string[] = [];
     
     for (const pattern of patterns) {
       let match;
