@@ -479,17 +479,30 @@ class SimpleCardDAVClient {
         console.log('PROPFIND Request fehlgeschlagen:', error);
       }
 
-      // METHODE 3: OPTIMIERTE direkte GET-Requests mit größeren Batches
-      console.log('Methode 3: Optimierte direkte GET-Requests...');
+      // METHODE 3: ULTRASCHNELLE direkte GET-Requests - alle Kontakte auf einmal
+      console.log('Methode 3: Ultraschnelle direkte GET-Requests...');
       try {
-        const directContacts = await this.getContactsViaDirectRequestsOptimized(addressBookUrl);
+        const directContacts = await this.getContactsViaUltraFastRequests(addressBookUrl);
         
         if (directContacts.length > 0) {
           this.contactsCache.set(addressBookUrl, { contacts: directContacts, timestamp: Date.now() });
           return directContacts;
         }
       } catch (error) {
-        console.log('Optimierte direkte GET-Requests fehlgeschlagen:', error);
+        console.log('Ultraschnelle direkte GET-Requests fehlgeschlagen:', error);
+        
+        // Fallback zu optimierten Requests
+        console.log('Fallback: Optimierte direkte GET-Requests...');
+        try {
+          const optimizedContacts = await this.getContactsViaDirectRequestsOptimized(addressBookUrl);
+          
+          if (optimizedContacts.length > 0) {
+            this.contactsCache.set(addressBookUrl, { contacts: optimizedContacts, timestamp: Date.now() });
+            return optimizedContacts;
+          }
+        } catch (fallbackError) {
+          console.log('Optimierte direkte GET-Requests fehlgeschlagen:', fallbackError);
+        }
       }
       
       // Fallback zu Demo-Kontakten
@@ -888,6 +901,101 @@ class SimpleCardDAVClient {
       .trim(); // Führende und nachfolgende Leerzeichen entfernen
   }
 
+  private async getContactsViaUltraFastRequests(addressBookUrl: string): Promise<CardDAVContact[]> {
+    console.log('Lade Kontakte via ultraschnelle direkte GET-Requests...');
+    
+    // Konstruiere vollständige URL für den initialen PROPFIND Request
+    const fullAddressBookUrl = addressBookUrl.startsWith('http') 
+      ? addressBookUrl 
+      : `${this.baseUrl}${addressBookUrl}`;
+    
+    console.log('Vollständige Adressbuch-URL für PROPFIND:', fullAddressBookUrl);
+    
+    // Zuerst PROPFIND um alle vCard-Dateien zu finden
+    const propfindBody = `<?xml version="1.0" encoding="utf-8" ?>
+      <d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+        <d:prop>
+          <d:getetag />
+        </d:prop>
+      </d:propfind>`;
+
+    const response = await fetch(fullAddressBookUrl, {
+      method: 'PROPFIND',
+      headers: {
+        'Authorization': `Basic ${this.credentials}`,
+        'Content-Type': 'application/xml',
+        'Depth': '1'
+      },
+      body: propfindBody
+    });
+
+    if (!response.ok) {
+      throw new Error(`PROPFIND Request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const xmlText = await response.text();
+    console.log('PROPFIND Response für ultraschnelle Requests:', xmlText.substring(0, 500) + '...');
+
+    // Extrahiere alle vCard-Datei-URLs
+    const vcardUrls: string[] = [];
+    const responseRegex = /<d:response[^>]*>(.*?)<\/d:response>/gs;
+    let match;
+
+    while ((match = responseRegex.exec(xmlText)) !== null) {
+      const responseContent = match[1];
+      const hrefMatch = responseContent.match(/<d:href[^>]*>(.*?)<\/d:href>/);
+      
+      if (hrefMatch) {
+        const href = hrefMatch[1].trim();
+        if (href.endsWith('.vcf')) {
+          // Konstruiere vollständige URL mit baseUrl
+          const fullVcardUrl = href.startsWith('http') 
+            ? href 
+            : `${this.baseUrl}${href}`;
+          vcardUrls.push(fullVcardUrl);
+        }
+      }
+    }
+
+    console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
+
+    // ULTRASCHNELL: Lade ALLE vCards parallel auf einmal
+    console.log(`Lade ALLE ${vcardUrls.length} Kontakte parallel auf einmal...`);
+    
+    // Lade alle vCards parallel ohne Batches
+    const allPromises = vcardUrls.map(async (vcardUrl, index) => {
+      try {
+        const vcardResponse = await fetch(vcardUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${this.credentials}`,
+            'Accept': 'text/vcard'
+          }
+        });
+
+        if (vcardResponse.ok) {
+          const vcardText = await vcardResponse.text();
+          const contact = this.parseVCard(vcardText, vcardUrl);
+          if (contact.name !== 'Unbekannt') {
+            return contact;
+          }
+        } else {
+          console.log(`Fehler beim Laden von ${vcardUrl}: ${vcardResponse.status}`);
+        }
+      } catch (error) {
+        console.log(`Fehler beim Laden von ${vcardUrl}:`, error);
+      }
+      return null;
+    });
+    
+    // Warte auf ALLE Requests gleichzeitig
+    const allResults = await Promise.all(allPromises);
+    const validContacts = allResults.filter(contact => contact !== null) as CardDAVContact[];
+    
+    console.log(`ULTRASCHNELL: ${validContacts.length} Kontakte parallel geladen!`);
+    return validContacts;
+  }
+
   private async getContactsViaDirectRequestsOptimized(addressBookUrl: string): Promise<CardDAVContact[]> {
     console.log('Lade Kontakte via optimierte direkte GET-Requests...');
     
@@ -946,16 +1054,21 @@ class SimpleCardDAVClient {
 
     console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
 
-    // OPTIMIERT: Lade vCards in größeren Batches für bessere Performance
+    // HOCHOPTIMIERT: Lade vCards in sehr großen Batches für maximale Performance
     const contacts: CardDAVContact[] = [];
-    const batchSize = 50; // Erhöhe Batch-Größe für bessere Performance
+    const batchSize = 500; // Drastisch erhöhte Batch-Größe für maximale Performance
+    
+    console.log(`Lade ${vcardUrls.length} Kontakte in ${Math.ceil(vcardUrls.length/batchSize)} Batches von je ${batchSize} Kontakten...`);
     
     for (let i = 0; i < vcardUrls.length; i += batchSize) {
       const batch = vcardUrls.slice(i, i + batchSize);
-      console.log(`Lade optimierten Batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(vcardUrls.length/batchSize)} (${batch.length} vCards)`);
+      const batchNumber = Math.floor(i/batchSize) + 1;
+      const totalBatches = Math.ceil(vcardUrls.length/batchSize);
       
-      // Lade Batch parallel
-      const batchPromises = batch.map(async (vcardUrl) => {
+      console.log(`Lade Batch ${batchNumber}/${totalBatches} (${batch.length} vCards) - ${Math.round((i/vcardUrls.length)*100)}% abgeschlossen`);
+      
+      // Lade Batch parallel mit erhöhter Concurrency
+      const batchPromises = batch.map(async (vcardUrl, index) => {
         try {
           const vcardResponse = await fetch(vcardUrl, {
             method: 'GET',
@@ -985,7 +1098,7 @@ class SimpleCardDAVClient {
       const validContacts = batchResults.filter(contact => contact !== null) as CardDAVContact[];
       contacts.push(...validContacts);
       
-      console.log(`Optimierter Batch ${Math.floor(i/batchSize) + 1} abgeschlossen: ${validContacts.length} Kontakte geladen`);
+      console.log(`Batch ${batchNumber}/${totalBatches} abgeschlossen: ${validContacts.length} Kontakte geladen (${Math.round(((i+batchSize)/vcardUrls.length)*100)}% Gesamtfortschritt)`);
     }
 
     console.log(`Insgesamt ${contacts.length} Kontakte via optimierte direkte Requests geladen`);
@@ -1050,16 +1163,21 @@ class SimpleCardDAVClient {
 
     console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
 
-    // OPTIMIERT: Lade vCards in Batches für bessere Performance
+    // HOCHOPTIMIERT: Lade vCards in sehr großen Batches für maximale Performance
     const contacts: CardDAVContact[] = [];
-    const batchSize = 10; // Lade 10 vCards parallel
+    const batchSize = 500; // Drastisch erhöhte Batch-Größe für maximale Performance
+    
+    console.log(`Lade ${vcardUrls.length} Kontakte in ${Math.ceil(vcardUrls.length/batchSize)} Batches von je ${batchSize} Kontakten...`);
     
     for (let i = 0; i < vcardUrls.length; i += batchSize) {
       const batch = vcardUrls.slice(i, i + batchSize);
-      console.log(`Lade Batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(vcardUrls.length/batchSize)} (${batch.length} vCards)`);
+      const batchNumber = Math.floor(i/batchSize) + 1;
+      const totalBatches = Math.ceil(vcardUrls.length/batchSize);
       
-      // Lade Batch parallel
-      const batchPromises = batch.map(async (vcardUrl) => {
+      console.log(`Lade Batch ${batchNumber}/${totalBatches} (${batch.length} vCards) - ${Math.round((i/vcardUrls.length)*100)}% abgeschlossen`);
+      
+      // Lade Batch parallel mit erhöhter Concurrency
+      const batchPromises = batch.map(async (vcardUrl, index) => {
         try {
           const vcardResponse = await fetch(vcardUrl, {
             method: 'GET',
@@ -1089,7 +1207,7 @@ class SimpleCardDAVClient {
       const validContacts = batchResults.filter(contact => contact !== null) as CardDAVContact[];
       contacts.push(...validContacts);
       
-      console.log(`Batch ${Math.floor(i/batchSize) + 1} abgeschlossen: ${validContacts.length} Kontakte geladen`);
+      console.log(`Batch ${batchNumber}/${totalBatches} abgeschlossen: ${validContacts.length} Kontakte geladen (${Math.round(((i+batchSize)/vcardUrls.length)*100)}% Gesamtfortschritt)`);
     }
 
     console.log(`Insgesamt ${contacts.length} Kontakte via direkte Requests geladen`);
