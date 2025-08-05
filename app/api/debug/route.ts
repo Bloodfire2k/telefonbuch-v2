@@ -39,12 +39,12 @@ export async function GET(request: NextRequest) {
     
     // Teste Kontakte laden
     console.log('=== TESTING CONTACT LOADING ===');
-    const contacts = await cardDAVClient.getContacts('Handwerker');
+    const result = await cardDAVClient.getContacts('Handwerker');
     
     return NextResponse.json({
       success: true,
-      contactsCount: contacts.length,
-      contacts: contacts.slice(0, 3), // Show first 3 contacts
+      contactsCount: result.contacts.length,
+      contacts: result.contacts.slice(0, 3), // Show first 3 contacts
       addressBooks: addressBooks.map(ab => ({ name: ab.displayName, url: ab.url })),
       environment: {
         serverUrl: process.env.CARDAV_SERVER_URL,
