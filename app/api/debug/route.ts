@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       console.log('DEBUG: Teste Kontakte laden für:', firstBook.displayName);
       console.log('DEBUG: URL:', firstBook.url);
       
-      const contacts = await cardDAVClient.getContactsFromAddressBook(firstBook.url);
+      const contacts = await cardDAVClient.getContacts(firstBook.displayName);
       console.log('DEBUG: Kontakte geladen:', contacts.length);
       
       return NextResponse.json({
