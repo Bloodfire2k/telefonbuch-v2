@@ -959,41 +959,67 @@ class SimpleCardDAVClient {
 
     console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
 
-    // ULTRASCHNELL: Lade ALLE vCards parallel auf einmal
-    console.log(`Lade ALLE ${vcardUrls.length} Kontakte parallel auf einmal...`);
+    // INTELLIGENT OPTIMIERT: Lade vCards in optimalen Batches für beste Performance
+    console.log(`Lade ${vcardUrls.length} Kontakte in intelligenten Batches...`);
     
-    // Lade alle vCards parallel ohne Batches
-    const allPromises = vcardUrls.map(async (vcardUrl, index) => {
-      try {
-        const vcardResponse = await fetch(vcardUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Basic ${this.credentials}`,
-            'Accept': 'text/vcard'
-          }
-        });
+    // Intelligente Batch-Größe basierend auf Anzahl der Kontakte
+    let batchSize = 50; // Standard für kleine Mengen
+    if (vcardUrls.length > 200) {
+      batchSize = 100; // Größere Batches für viele Kontakte
+    }
+    if (vcardUrls.length > 500) {
+      batchSize = 150; // Noch größere Batches für sehr viele Kontakte
+    }
+    
+    console.log(`Intelligente Batch-Größe: ${batchSize} Kontakte pro Batch`);
+    
+    const contacts: CardDAVContact[] = [];
+    const totalBatches = Math.ceil(vcardUrls.length / batchSize);
+    
+    for (let i = 0; i < vcardUrls.length; i += batchSize) {
+      const batch = vcardUrls.slice(i, i + batchSize);
+      const batchNumber = Math.floor(i / batchSize) + 1;
+      const progress = Math.round((i / vcardUrls.length) * 100);
+      
+      console.log(`Lade Batch ${batchNumber}/${totalBatches} (${batch.length} Kontakte) - ${progress}% abgeschlossen`);
+      
+      // Lade Batch parallel mit optimaler Concurrency
+      const batchPromises = batch.map(async (vcardUrl, index) => {
+        try {
+          const vcardResponse = await fetch(vcardUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${this.credentials}`,
+              'Accept': 'text/vcard'
+            }
+          });
 
-        if (vcardResponse.ok) {
-          const vcardText = await vcardResponse.text();
-          const contact = this.parseVCard(vcardText, vcardUrl);
-          if (contact.name !== 'Unbekannt') {
-            return contact;
+          if (vcardResponse.ok) {
+            const vcardText = await vcardResponse.text();
+            const contact = this.parseVCard(vcardText, vcardUrl);
+            if (contact.name !== 'Unbekannt') {
+              return contact;
+            }
+          } else {
+            console.log(`Fehler beim Laden von ${vcardUrl}: ${vcardResponse.status}`);
           }
-        } else {
-          console.log(`Fehler beim Laden von ${vcardUrl}: ${vcardResponse.status}`);
+        } catch (error) {
+          console.log(`Fehler beim Laden von ${vcardUrl}:`, error);
         }
-      } catch (error) {
-        console.log(`Fehler beim Laden von ${vcardUrl}:`, error);
-      }
-      return null;
-    });
+        return null;
+      });
+      
+      // Warte auf Batch-Completion
+      const batchResults = await Promise.all(batchPromises);
+      const validContacts = batchResults.filter(contact => contact !== null) as CardDAVContact[];
+      contacts.push(...validContacts);
+      
+      const totalProgress = Math.round(((i + batchSize) / vcardUrls.length) * 100);
+      console.log(`Batch ${batchNumber}/${totalBatches} abgeschlossen: ${validContacts.length} Kontakte geladen (${totalProgress}% Gesamtfortschritt)`);
+    }
     
-    // Warte auf ALLE Requests gleichzeitig
-    const allResults = await Promise.all(allPromises);
-    const validContacts = allResults.filter(contact => contact !== null) as CardDAVContact[];
-    
-    console.log(`ULTRASCHNELL: ${validContacts.length} Kontakte parallel geladen!`);
-    return validContacts;
+    console.log(`INTELLIGENT OPTIMIERT: ${contacts.length} Kontakte in ${totalBatches} Batches geladen!`);
+    return contacts;
   }
 
   private async getContactsViaDirectRequestsOptimized(addressBookUrl: string): Promise<CardDAVContact[]> {
@@ -1054,9 +1080,17 @@ class SimpleCardDAVClient {
 
     console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
 
-    // HOCHOPTIMIERT: Lade vCards in sehr großen Batches für maximale Performance
+    // INTELLIGENT OPTIMIERT: Lade vCards in optimalen Batches für beste Performance
     const contacts: CardDAVContact[] = [];
-    const batchSize = 500; // Drastisch erhöhte Batch-Größe für maximale Performance
+    
+    // Intelligente Batch-Größe basierend auf Anzahl der Kontakte
+    let batchSize = 50; // Standard für kleine Mengen
+    if (vcardUrls.length > 200) {
+      batchSize = 100; // Größere Batches für viele Kontakte
+    }
+    if (vcardUrls.length > 500) {
+      batchSize = 150; // Noch größere Batches für sehr viele Kontakte
+    }
     
     console.log(`Lade ${vcardUrls.length} Kontakte in ${Math.ceil(vcardUrls.length/batchSize)} Batches von je ${batchSize} Kontakten...`);
     
@@ -1064,10 +1098,11 @@ class SimpleCardDAVClient {
       const batch = vcardUrls.slice(i, i + batchSize);
       const batchNumber = Math.floor(i/batchSize) + 1;
       const totalBatches = Math.ceil(vcardUrls.length/batchSize);
+      const progress = Math.round((i/vcardUrls.length)*100);
       
-      console.log(`Lade Batch ${batchNumber}/${totalBatches} (${batch.length} vCards) - ${Math.round((i/vcardUrls.length)*100)}% abgeschlossen`);
+      console.log(`Lade Batch ${batchNumber}/${totalBatches} (${batch.length} vCards) - ${progress}% abgeschlossen`);
       
-      // Lade Batch parallel mit erhöhter Concurrency
+      // Lade Batch parallel mit optimaler Concurrency
       const batchPromises = batch.map(async (vcardUrl, index) => {
         try {
           const vcardResponse = await fetch(vcardUrl, {
@@ -1098,7 +1133,8 @@ class SimpleCardDAVClient {
       const validContacts = batchResults.filter(contact => contact !== null) as CardDAVContact[];
       contacts.push(...validContacts);
       
-      console.log(`Batch ${batchNumber}/${totalBatches} abgeschlossen: ${validContacts.length} Kontakte geladen (${Math.round(((i+batchSize)/vcardUrls.length)*100)}% Gesamtfortschritt)`);
+      const totalProgress = Math.round(((i+batchSize)/vcardUrls.length)*100);
+      console.log(`Batch ${batchNumber}/${totalBatches} abgeschlossen: ${validContacts.length} Kontakte geladen (${totalProgress}% Gesamtfortschritt)`);
     }
 
     console.log(`Insgesamt ${contacts.length} Kontakte via optimierte direkte Requests geladen`);
