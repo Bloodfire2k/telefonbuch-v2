@@ -13,31 +13,39 @@ export async function GET(request: NextRequest) {
 
     // Lade Adressbücher für die UI
     const addressBooks = await cardDAVClient.getAddressBooks();
-    const addressBookStats = addressBooks.map(book => ({
-      name: book.displayName,
-      count: 0, // Wird später aktualisiert
-      url: book.url
-    }));
-
-    // Lade Kontakte aus allen Adressbüchern wenn kein spezifisches Adressbuch ausgewählt ist
+    
+    // Lade Kontakte und Statistiken für jedes Adressbuch
+    const addressBookStats = [];
     let allContacts: any[] = [];
     
-    if (addressBookName) {
-      // Lade nur das spezifische Adressbuch
-      const contacts = await cardDAVClient.getContacts(addressBookName);
-      allContacts = contacts;
-    } else {
-      // Lade alle Adressbücher
-      console.log('Lade Kontakte aus allen Adressbüchern...');
-      for (const book of addressBooks) {
-        try {
-          console.log(`Lade Kontakte aus "${book.displayName}"...`);
-          const contacts = await cardDAVClient.getContacts(book.displayName);
-          console.log(`${contacts.length} Kontakte aus "${book.displayName}" geladen`);
+    for (const book of addressBooks) {
+      try {
+        console.log(`Lade Kontakte aus "${book.displayName}"...`);
+        const contacts = await cardDAVClient.getContacts(book.displayName);
+        console.log(`${contacts.length} Kontakte aus "${book.displayName}" geladen`);
+        
+        // Füge zur Statistik hinzu
+        addressBookStats.push({
+          name: book.displayName,
+          count: contacts.length,
+          url: book.url
+        });
+        
+        // Wenn kein spezifisches Adressbuch ausgewählt ist, füge alle hinzu
+        if (!addressBookName) {
           allContacts.push(...contacts);
-        } catch (error) {
-          console.log(`Fehler beim Laden von "${book.displayName}":`, error);
         }
+        // Wenn das spezifische Adressbuch ausgewählt ist, verwende nur diese
+        else if (book.displayName === addressBookName) {
+          allContacts = contacts;
+        }
+      } catch (error) {
+        console.log(`Fehler beim Laden von "${book.displayName}":`, error);
+        addressBookStats.push({
+          name: book.displayName,
+          count: 0,
+          url: book.url
+        });
       }
     }
 
@@ -53,12 +61,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Aktualisiere die Statistiken
-    addressBookStats.forEach(book => {
-      if (book.name === addressBookName || !addressBookName) {
-        book.count = filteredContacts.length;
-      }
-    });
+
 
     console.log(`API: ${filteredContacts.length} Kontakte erfolgreich geladen`);
     
