@@ -17,10 +17,20 @@ export async function GET(request: NextRequest) {
     // Alle Umgebungsvariablen auflisten
     console.log('=== ALL ENVIRONMENT VARIABLES ===');
     Object.keys(process.env).forEach(key => {
-      if (key.includes('CARDAV') || key.includes('NODE') || key.includes('USE')) {
-        console.log(`${key}: ${process.env[key]}`);
-      }
+      console.log(`${key}: ${process.env[key]}`);
     });
+    
+    // Spezielle Coolify-Variablen prüfen
+    console.log('=== COOLIFY SPECIFIC VARIABLES ===');
+    console.log('COOLIFY_APP_ID:', process.env.COOLIFY_APP_ID);
+    console.log('COOLIFY_DATABASE_URL:', process.env.COOLIFY_DATABASE_URL);
+    console.log('COOLIFY_REDIS_URL:', process.env.COOLIFY_REDIS_URL);
+    
+    // Alternative Variablennamen prüfen
+    console.log('=== ALTERNATIVE VARIABLE NAMES ===');
+    console.log('NEXT_PUBLIC_CARDAV_SERVER_URL:', process.env.NEXT_PUBLIC_CARDAV_SERVER_URL);
+    console.log('NEXT_PUBLIC_CARDAV_USERNAME:', process.env.NEXT_PUBLIC_CARDAV_USERNAME);
+    console.log('NEXT_PUBLIC_USE_REAL_CARDAV:', process.env.NEXT_PUBLIC_USE_REAL_CARDAV);
     
     // Teste CardDAV-Verbindung
     console.log('=== TESTING CARDAV CONNECTION ===');
