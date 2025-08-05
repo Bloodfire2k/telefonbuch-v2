@@ -19,14 +19,38 @@ export async function GET(request: NextRequest) {
       url: book.url
     }));
 
-    // Lade Kontakte
-    const contacts = await cardDAVClient.getContacts(addressBookName || '');
+    // Lade Kontakte aus allen Adressbüchern wenn kein spezifisches Adressbuch ausgewählt ist
+    let allContacts: any[] = [];
+    
+    if (addressBookName) {
+      // Lade nur das spezifische Adressbuch
+      const contacts = await cardDAVClient.getContacts(addressBookName);
+      allContacts = contacts;
+    } else {
+      // Lade alle Adressbücher
+      console.log('Lade Kontakte aus allen Adressbüchern...');
+      for (const book of addressBooks) {
+        try {
+          console.log(`Lade Kontakte aus "${book.displayName}"...`);
+          const contacts = await cardDAVClient.getContacts(book.displayName);
+          console.log(`${contacts.length} Kontakte aus "${book.displayName}" geladen`);
+          allContacts.push(...contacts);
+        } catch (error) {
+          console.log(`Fehler beim Laden von "${book.displayName}":`, error);
+        }
+      }
+    }
 
     // Suche anwenden falls vorhanden
-    let filteredContacts = contacts;
+    let filteredContacts = allContacts;
     if (searchTerm) {
-      console.log(`API: Suche nach "${searchTerm}" in ${contacts.length} Kontakten`);
-      filteredContacts = await cardDAVClient.searchContacts(addressBookName || '', searchTerm);
+      console.log(`API: Suche nach "${searchTerm}" in ${allContacts.length} Kontakten`);
+      filteredContacts = allContacts.filter(contact =>
+        contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        contact.phone?.includes(searchTerm) ||
+        contact.company?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     }
 
     // Aktualisiere die Statistiken
