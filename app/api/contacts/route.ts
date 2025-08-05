@@ -11,6 +11,14 @@ export async function GET(request: NextRequest) {
 
     console.log(`API: Lade Kontakte${addressBookName ? ` für Adressbuch "${addressBookName}"` : ''}${searchTerm ? ` mit Suche "${searchTerm}"` : ''}`);
 
+    // Lade Adressbücher für die UI
+    const addressBooks = await cardDAVClient.getAddressBooks();
+    const addressBookStats = addressBooks.map(book => ({
+      name: book.displayName,
+      count: 0, // Wird später aktualisiert
+      url: book.url
+    }));
+
     // Lade Kontakte
     const contacts = await cardDAVClient.getContacts(addressBookName || '');
 
@@ -21,11 +29,19 @@ export async function GET(request: NextRequest) {
       filteredContacts = await cardDAVClient.searchContacts(addressBookName || '', searchTerm);
     }
 
+    // Aktualisiere die Statistiken
+    addressBookStats.forEach(book => {
+      if (book.name === addressBookName || !addressBookName) {
+        book.count = filteredContacts.length;
+      }
+    });
+
     console.log(`API: ${filteredContacts.length} Kontakte erfolgreich geladen`);
     
     return NextResponse.json({
       success: true,
       contacts: filteredContacts,
+      addressBooks: addressBookStats,
       totalCount: filteredContacts.length
     });
 
