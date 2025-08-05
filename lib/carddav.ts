@@ -350,28 +350,44 @@ class SimpleCardDAVClient {
              </d:prop>
            </c:addressbook-query>`;
 
-         response = await fetch(fullUrl, {
-           method: 'REPORT',
-           headers: {
-             'Authorization': `Basic ${this.credentials}`,
-             'Content-Type': 'application/xml',
-             'Depth': '1'
-           },
-           body: reportBody
-         });
+         try {
+           response = await fetch(fullUrl, {
+             method: 'REPORT',
+             headers: {
+               'Authorization': `Basic ${this.credentials}`,
+               'Content-Type': 'application/xml',
+               'Depth': '1'
+             },
+             body: reportBody
+           });
 
-         xmlText = await response.text();
-         console.log('REPORT Response XML (vollständig):', xmlText);
-         console.log('XML Länge:', xmlText.length);
-         console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+           if (!response.ok) {
+             console.log(`REPORT Request failed: ${response.status} ${response.statusText}`);
+           } else {
+             xmlText = await response.text();
+             console.log('REPORT Response XML (vollständig):', xmlText);
+             console.log('XML Länge:', xmlText.length);
+             console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+           }
+         } catch (error) {
+           console.log('REPORT Request fehlgeschlagen:', error);
+         }
        }
        
-       const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
-      
-      // Update cache
-      this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
-      
-      return contacts;
+              const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
+       
+       console.log(`Kontakte geparst: ${contacts.length} für ${addressBookName}`);
+       
+       // Update cache
+       this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
+       
+       // Wenn keine Kontakte gefunden wurden, verwende Demo-Kontakte
+       if (contacts.length === 0) {
+         console.log(`Keine echten Kontakte gefunden für ${addressBookName}, verwende Demo-Kontakte`);
+         return this.getDemoContacts(addressBookName);
+       }
+       
+       return contacts;
     } catch (error) {
       console.error('Fehler beim Laden der Kontakte:', error);
       
