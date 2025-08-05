@@ -2,108 +2,110 @@
 
 import { useState, useEffect } from 'react';
 import ContactCard from '@/components/ContactCard';
-import SummaryCards, { AddressBook } from '@/components/SummaryCards';
 import SearchBar from '@/components/SearchBar';
-import { CardDAVContact } from '@/lib/carddav';
+import SummaryCards from '@/components/SummaryCards';
+import AddressBookSelector from '@/components/AddressBookSelector';
+
+interface Contact {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  title?: string;
+  website?: string;
+  birthday?: string;
+  notes?: string;
+}
+
+interface AddressBook {
+  name: string;
+  count: number;
+  url: string;
+}
 
 export default function Home() {
-  const [contacts, setContacts] = useState<CardDAVContact[]>([]);
-  const [filteredContacts, setFilteredContacts] = useState<CardDAVContact[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [addressBooks, setAddressBooks] = useState<AddressBook[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedAddressBook, setSelectedAddressBook] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchContacts();
-  }, [selectedAddressBook]);
-
-  const fetchContacts = async () => {
-    setLoading(true);
+  const loadContacts = async (addressBookName?: string | null) => {
+    setIsLoading(true);
     setError(null);
     
     try {
       const params = new URLSearchParams();
-      if (selectedAddressBook) {
-        params.append('addressBookName', selectedAddressBook);
+      if (addressBookName) {
+        params.append('addressBook', addressBookName);
       }
-      
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+
       const response = await fetch(`/api/contacts?${params.toString()}`);
       const data = await response.json();
-      
+
       if (data.success) {
         setContacts(data.contacts);
         setFilteredContacts(data.contacts);
-        setAddressBooks(data.addressBooks || []);
+        setAddressBooks(data.addressBooks);
+        console.log(`${data.contacts.length} Kontakte geladen`);
       } else {
         setError(data.error || 'Fehler beim Laden der Kontakte');
+        setContacts([]);
+        setFilteredContacts([]);
       }
     } catch (err) {
-      setError('Fehler beim Laden der Kontakte');
       console.error('Fehler beim Laden der Kontakte:', err);
+      setError('Verbindungsfehler');
+      setContacts([]);
+      setFilteredContacts([]);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleSearch = (searchTerm: string) => {
-    if (!searchTerm.trim()) {
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    if (term.trim() === '') {
       setFilteredContacts(contacts);
-      return;
-    }
-
-    const filtered = contacts.filter(contact => {
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        contact.name.toLowerCase().includes(searchLower) ||
-        contact.email?.toLowerCase().includes(searchLower) ||
-        contact.phone?.toLowerCase().includes(searchLower) ||
-        contact.company?.toLowerCase().includes(searchLower) ||
-        contact.phones?.some(phone => 
-          phone.number.toLowerCase().includes(searchLower)
-        )
+    } else {
+      const filtered = contacts.filter(contact =>
+        contact.name.toLowerCase().includes(term.toLowerCase()) ||
+        contact.email?.toLowerCase().includes(term.toLowerCase()) ||
+        contact.phone?.includes(term) ||
+        contact.company?.toLowerCase().includes(term.toLowerCase())
       );
-    });
-
-    setFilteredContacts(filtered);
-  };
-
-  const handleRefresh = () => {
-    fetchContacts();
+      setFilteredContacts(filtered);
+    }
   };
 
   const handleAddressBookSelect = (addressBookName: string | null) => {
     setSelectedAddressBook(addressBookName);
+    loadContacts(addressBookName);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Lade Kontakte...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    loadContacts();
+  }, []);
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center">
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-              <p className="font-bold">Fehler</p>
-              <p>{error}</p>
-              <button 
-                onClick={fetchContacts}
-                className="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-              >
-                Erneut versuchen
-              </button>
-            </div>
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-red-800 mb-2">Fehler beim Laden der Kontakte</h2>
+            <p className="text-red-600">{error}</p>
+            <button
+              onClick={() => loadContacts()}
+              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Erneut versuchen
+            </button>
           </div>
         </div>
       </div>
@@ -112,43 +114,47 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center mb-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Telefonbuch</h1>
-          <p className="text-gray-600">
-            {selectedAddressBook 
-              ? `Anzeige: ${selectedAddressBook} (${filteredContacts.length} Kontakte)`
-              : `Alle Adressbücher (${filteredContacts.length} Kontakte)`
-            }
-          </p>
+          <p className="text-gray-600">Schneller Zugriff auf alle Kontakte</p>
         </div>
 
-        <SummaryCards 
-          addressBooks={addressBooks}
-          onAddressBookSelect={handleAddressBookSelect}
-          selectedAddressBook={selectedAddressBook}
-        />
+        {/* Adressbuch-Auswahl */}
+        {addressBooks.length > 0 && (
+          <AddressBookSelector
+            addressBooks={addressBooks}
+            selectedAddressBook={selectedAddressBook}
+            onAddressBookSelect={handleAddressBookSelect}
+          />
+        )}
 
-        <SearchBar onSearch={handleSearch} onRefresh={handleRefresh} />
+        {/* Statistiken */}
+        <SummaryCards contacts={filteredContacts} />
 
-        <div className="mt-8">
-          {filteredContacts.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500">
-                {contacts.length === 0 
-                  ? 'Keine Kontakte gefunden'
-                  : 'Keine Kontakte entsprechen der Suche'
-                }
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredContacts.map((contact) => (
-                <ContactCard key={contact.id} contact={contact} />
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Suchleiste */}
+        <SearchBar onSearch={handleSearch} />
+
+        {/* Kontakte */}
+        {isLoading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">Lade Kontakte...</span>
+          </div>
+        ) : filteredContacts.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredContacts.map((contact) => (
+              <ContactCard key={contact.id} contact={contact} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">
+              {searchTerm ? 'Keine Kontakte gefunden.' : 'Keine Kontakte verfügbar.'}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
