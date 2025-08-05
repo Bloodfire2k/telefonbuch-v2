@@ -300,7 +300,27 @@ class SimpleCardDAVClient {
       // Lade die echten Adressbücher, um die URL zu finden
       console.log(`Debug: Lade Adressbücher für ${addressBookName}...`);
       const addressBooks = await this.getAddressBooks();
-      const targetAddressBook = addressBooks.find(book => book.displayName === addressBookName);
+      
+      // Suche nach dem Adressbuch mit verschiedenen Namensvarianten
+      let targetAddressBook = addressBooks.find(book => book.displayName === addressBookName);
+      
+      if (!targetAddressBook) {
+        // Versuche mit Mapping zu finden
+        const mappedBook = this.addressBookMapping.get(addressBookName);
+        if (mappedBook) {
+          targetAddressBook = addressBooks.find(book => book.displayName === mappedBook.originalName);
+          console.log(`Debug: Gefunden über Mapping: ${addressBookName} -> ${mappedBook.originalName}`);
+        }
+      }
+      
+      if (!targetAddressBook) {
+        // Versuche mit Teilstring-Matching
+        targetAddressBook = addressBooks.find(book => 
+          book.displayName.includes(addressBookName) || 
+          addressBookName.includes(book.displayName)
+        );
+        console.log(`Debug: Gefunden über Teilstring-Matching`);
+      }
       
       console.log(`Debug: Gefundenes Adressbuch:`, targetAddressBook);
       
