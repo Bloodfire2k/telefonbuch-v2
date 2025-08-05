@@ -12,30 +12,21 @@ export async function GET(request: NextRequest) {
     console.log(`API: Lade Kontakte${addressBookName ? ` für Adressbuch "${addressBookName}"` : ''}${searchTerm ? ` mit Suche "${searchTerm}"` : ''}`);
 
     // Lade Kontakte
-    const result = await cardDAVClient.getContacts(addressBookName || undefined);
-
-    if (!result.success) {
-      console.error('API: Fehler beim Laden der Kontakte:', result.error);
-      return NextResponse.json(
-        { error: result.error || 'Fehler beim Laden der Kontakte' },
-        { status: 500 }
-      );
-    }
+    const contacts = await cardDAVClient.getContacts(addressBookName || '');
 
     // Suche anwenden falls vorhanden
-    let contacts = result.contacts;
+    let filteredContacts = contacts;
     if (searchTerm) {
       console.log(`API: Suche nach "${searchTerm}" in ${contacts.length} Kontakten`);
-      contacts = await cardDAVClient.searchContacts(addressBookName || '', searchTerm);
+      filteredContacts = await cardDAVClient.searchContacts(addressBookName || '', searchTerm);
     }
 
-    console.log(`API: ${contacts.length} Kontakte erfolgreich geladen`);
+    console.log(`API: ${filteredContacts.length} Kontakte erfolgreich geladen`);
     
     return NextResponse.json({
       success: true,
-      contacts,
-      addressBooks: result.addressBooks,
-      totalCount: contacts.length
+      contacts: filteredContacts,
+      totalCount: filteredContacts.length
     });
 
   } catch (error) {
