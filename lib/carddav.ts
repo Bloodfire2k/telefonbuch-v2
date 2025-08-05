@@ -35,7 +35,6 @@ class SimpleCardDAVClient {
   private serverUrl: string;
   private baseUrl: string; // Neue Property für Base-URL
   private credentials: string;
-  private allowedBooks: string[];
   private isConfigured: boolean = false;
   private addressBookMapping: Map<string, {originalName: string, url: string}> = new Map(); // Mapping: cleanName -> {originalName, url}
   private contactsCache: Map<string, { contacts: CardDAVContact[], timestamp: number }> = new Map(); // In-Memory Cache für Kontakte
@@ -45,7 +44,6 @@ class SimpleCardDAVClient {
     this.serverUrl = '';
     this.baseUrl = ''; // Initialisiere baseUrl
     this.credentials = '';
-    this.allowedBooks = [];
     this.initializeConfig();
   }
 
@@ -54,18 +52,7 @@ class SimpleCardDAVClient {
       this.serverUrl = process.env.CARDAV_SERVER_URL || '';
       const username = process.env.CARDAV_USERNAME || '';
       const password = process.env.CARDAV_PASSWORD || '';
-      const allowedBooksStr = process.env.ALLOWED_ADDRESSBOOKS || '';
       
-      this.allowedBooks = allowedBooksStr.split(',').map(book => book.trim()).filter(book => book.length > 0);
-      console.log(`DEBUG: ALLOWED_ADDRESSBOOKS env var: "${allowedBooksStr}"`);
-      console.log(`DEBUG: Parsed allowedBooks:`, this.allowedBooks);
-      
-      // Wenn keine Adressbücher konfiguriert sind und CardDAV verfügbar ist, verwende alle gefundenen
-      if (this.allowedBooks.length === 0) {
-        this.allowedBooks = []; // Wird dynamisch gefüllt
-        console.log(`DEBUG: No allowed books configured, will allow all found address books`);
-      }
-
       if (this.serverUrl && username && password) {
         // Create base64 encoded credentials
         this.credentials = Buffer.from(`${username}:${password}`).toString('base64');
@@ -85,15 +72,10 @@ class SimpleCardDAVClient {
       } else {
         console.warn('CardDAV-Konfiguration unvollständig - verwende Demo-Modus');
         this.isConfigured = false;
-        // Fallback für Demo-Modus
-        if (this.allowedBooks.length === 0) {
-          this.allowedBooks = ['Edeka Adressbuch', 'Vertreter', 'Handwerker'];
-        }
       }
     } catch (error) {
       console.warn('Fehler beim Initialisieren der CardDAV-Konfiguration:', error);
       this.isConfigured = false;
-      this.allowedBooks = ['Edeka Adressbuch', 'Vertreter', 'Handwerker'];
     }
   }
 
@@ -126,8 +108,9 @@ class SimpleCardDAVClient {
 
   async getAddressBooks(): Promise<CardDAVAddressBook[]> {
     if (!this.isConfigured) {
-      console.log('Demo-Modus: Zeige konfigurierte Adressbücher');
-      return this.allowedBooks.map(name => ({
+      console.log('Demo-Modus: Zeige Demo-Adressbücher');
+      const demoBooks = ['Edeka Adressbuch', 'Vertreter', 'Handwerker'];
+      return demoBooks.map(name => ({
         displayName: name,
         url: `${encodeURIComponent(name)}/`,
         description: `Adressbuch: ${name} (Demo-Modus)`
@@ -153,12 +136,12 @@ class SimpleCardDAVClient {
       // Extract addressbook-home-set URL
       const homeSetMatch = principalXml.match(/<card:addressbook-home-set[^>]*><d:href[^>]*>(.*?)<\/d:href><\/card:addressbook-home-set>/);
       
-             if (!homeSetMatch) {
-         console.log('Keine addressbook-home-set gefunden, versuche direkten Zugriff...');
-         // Fallback: Try to construct the addressbook URL
-         const addressBookUrl = this.serverUrl.replace('/principals/users/', '/addressbooks/users/');
-         return await this.getAddressBooksFromUrl(addressBookUrl);
-       }
+      if (!homeSetMatch) {
+        console.log('Keine addressbook-home-set gefunden, versuche direkten Zugriff...');
+        // Fallback: Try to construct the addressbook URL
+        const addressBookUrl = this.serverUrl.replace('/principals/users/', '/addressbooks/users/');
+        return await this.getAddressBooksFromUrl(addressBookUrl);
+      }
       
       const addressBookHomeUrl = homeSetMatch[1].trim();
       console.log('Gefundene addressbook-home-set URL:', addressBookHomeUrl);
@@ -173,7 +156,6 @@ class SimpleCardDAVClient {
     // Fallback: Return demo books if discovery fails
     console.log('Fallback: Verwende Demo-Adressbücher');
     const fallbackBooks = ['Edeka Adressbuch', 'Vertreter', 'Handwerker'];
-    this.allowedBooks = fallbackBooks;
     return fallbackBooks.map(name => ({
       displayName: name,
       url: `${encodeURIComponent(name)}/`,
@@ -256,8 +238,6 @@ class SimpleCardDAVClient {
     console.log('Gefilterte und bereinigte Adressbücher:', filteredBooks.map(b => b.displayName));
 
     if (filteredBooks.length > 0) {
-      // Update allowedBooks for contact filtering
-      this.allowedBooks = filteredBooks.map(book => book.displayName);
       return filteredBooks;
     }
 
@@ -291,30 +271,14 @@ class SimpleCardDAVClient {
       // Wenn ein spezifisches Adressbuch angegeben ist, lade nur dieses
       if (addressBookName) {
         console.log(`CardDAV: Suche nach Adressbuch: "${addressBookName}"`);
-        console.log(`CardDAV: Verfügbare Adressbücher:`, addressBooks.map(ab => ab.displayName));
-        console.log(`CardDAV: Mapping Keys:`, Array.from(this.addressBookMapping.keys()));
         
-        // Verwende das Mapping, um den ursprünglichen Namen zu finden
-        const mapping = this.addressBookMapping.get(addressBookName);
-        let targetAddressBook;
-        
-        if (mapping) {
-          console.log(`CardDAV: Mapping gefunden für "${addressBookName}":`, mapping);
-          // Suche nach dem ursprünglichen Namen
-          targetAddressBook = addressBooks.find(ab => 
-            ab.displayName === mapping.originalName
-          );
-        } else {
-          console.log(`CardDAV: Kein Mapping für "${addressBookName}", verwende Fallback`);
-          // Fallback: Suche nach dem bereinigten Namen
-          targetAddressBook = addressBooks.find(ab => 
-            ab.displayName.toLowerCase() === addressBookName.toLowerCase()
-          );
-        }
+        // Suche nach dem Adressbuch (case-insensitive)
+        const targetAddressBook = addressBooks.find(ab => 
+          ab.displayName.toLowerCase() === addressBookName.toLowerCase()
+        );
 
         if (!targetAddressBook) {
           console.log(`CardDAV: Adressbuch "${addressBookName}" nicht gefunden`);
-          console.log(`CardDAV: Mapping für "${addressBookName}":`, mapping);
           return {
             success: false,
             contacts: [],
@@ -368,41 +332,6 @@ class SimpleCardDAVClient {
 
   private async getContactsFromAddressBook(addressBookUrl: string): Promise<CardDAVContact[]> {
     console.log(`DEBUG: getContactsFromAddressBook called with URL: "${addressBookUrl}"`);
-    console.log(`DEBUG: this.allowedBooks (at start of method):`, this.allowedBooks);
-    console.log(`DEBUG: this.allowedBooks.length: ${this.allowedBooks.length}`);
-
-    // If no specific allowedBooks restriction, allow any address book
-    if (this.allowedBooks.length > 0) {
-      const isAllowed = this.allowedBooks.some(book => {
-        // Try multiple matching strategies
-        const bookLower = book.toLowerCase();
-        const urlLower = addressBookUrl.toLowerCase();
-        
-        // Strategy 1: Direct inclusion
-        const directMatch = urlLower.includes(bookLower);
-        
-        // Strategy 2: Check for cleaned name patterns
-        const cleanedBook = bookLower.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-        const cleanedMatch = urlLower.includes(cleanedBook);
-        
-        // Strategy 3: Check for partial matches (e.g., "edeka" in "edeka-adressbuch")
-        const words = bookLower.split(/\s+/);
-        const partialMatch = words.some(word => word.length > 2 && urlLower.includes(word));
-        
-        const check = directMatch || cleanedMatch || partialMatch;
-        console.log(`DEBUG: Checking "${book}" against "${addressBookUrl}":`);
-        console.log(`  - Direct match: ${directMatch}`);
-        console.log(`  - Cleaned match: ${cleanedMatch} (cleaned: "${cleanedBook}")`);
-        console.log(`  - Partial match: ${partialMatch} (words: ${words.join(', ')})`);
-        console.log(`  - Final result: ${check}`);
-        
-        return check;
-      });
-      if (!isAllowed) {
-        console.log(`DEBUG: Access denied for URL: "${addressBookUrl}" because it does not include any of:`, this.allowedBooks);
-        throw new Error('Zugriff auf dieses Adressbuch nicht erlaubt');
-      }
-    }
 
     if (!this.isConfigured) {
       console.log(`Demo-Modus: Lade Demo-Kontakte für ${addressBookUrl}`);
@@ -425,58 +354,47 @@ class SimpleCardDAVClient {
 
       console.log(`Versuche Kontakte zu laden von: ${addressBookUrl}`);
       
-      // METHODE 0: Direkter Export als eine VCF-Datei (schnellste) - VERBESSERT
+      // METHODE 0: Direkter Export als eine VCF-Datei (schnellste)
       console.log('Methode 0: Direkter Export als VCF-Datei...');
       try {
-        // Versuche verschiedene Export-URLs
-        const exportUrls = [
-          `${addressBookUrl}?export`,
-          `${addressBookUrl}?export=vcf`,
-          `${addressBookUrl.replace('/remote.php/dav/addressbooks/', '/remote.php/dav/')}?export`,
-          `${addressBookUrl.replace('/remote.php/dav/addressbooks/', '/remote.php/dav/')}?export=vcf`
-        ];
+        const exportUrl = `${addressBookUrl}?export`;
+        console.log(`Versuche Export von: ${exportUrl}`);
         
-        for (const exportUrl of exportUrls) {
-          console.log(`Versuche Export von: ${exportUrl}`);
-          
-          const response = await fetch(exportUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Basic ${this.credentials}`,
-              'Accept': 'text/vcard, application/vcard, */*',
-              'Cache-Control': 'no-cache',
-              'User-Agent': 'Mozilla/5.0 (compatible; CardDAV-Client)'
-            }
-          });
+        const response = await fetch(exportUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${this.credentials}`,
+            'Accept': 'text/vcard, application/vcard, */*',
+            'Cache-Control': 'no-cache',
+            'User-Agent': 'Mozilla/5.0 (compatible; CardDAV-Client)'
+          }
+        });
 
-          if (response.ok) {
-            const vcfContent = await response.text();
-            console.log(`Export erfolgreich! VCF Länge: ${vcfContent.length} Zeichen`);
+        if (response.ok) {
+          const vcfContent = await response.text();
+          console.log(`Export erfolgreich! VCF Länge: ${vcfContent.length} Zeichen`);
+          
+          if (vcfContent.includes('BEGIN:VCARD')) {
+            // Parse die große VCF-Datei in einzelne Kontakte
+            const contacts = this.parseVCFExport(vcfContent, this.baseUrl);
+            console.log(`Export Kontakte geparst: ${contacts.length} für ${addressBookUrl}`);
             
-            if (vcfContent.includes('BEGIN:VCARD')) {
-              // Parse die große VCF-Datei in einzelne Kontakte
-              const contacts = this.parseVCFExport(vcfContent, this.baseUrl);
-              console.log(`Export Kontakte geparst: ${contacts.length} für ${addressBookUrl}`);
-              
-              if (contacts.length > 0) {
-                this.contactsCache.set(addressBookUrl, { contacts, timestamp: Date.now() });
-                return contacts;
-              }
-            } else {
-              console.log('Export erfolgreich, aber keine vCard-Daten gefunden');
+            if (contacts.length > 0) {
+              this.contactsCache.set(addressBookUrl, { contacts, timestamp: Date.now() });
+              return contacts;
             }
           } else {
-            console.log(`Export Request failed für ${exportUrl}: ${response.status} ${response.statusText}`);
+            console.log('Export erfolgreich, aber keine vCard-Daten gefunden');
           }
+        } else {
+          console.log(`Export Request failed für ${exportUrl}: ${response.status} ${response.statusText}`);
         }
       } catch (error) {
         console.log(`Export Methode fehlgeschlagen:`, error);
       }
       
-      // OPTIMIERT: Verwende verschiedene CardDAV-Methoden für maximale Performance
-      console.log('Versuche optimierte CardDAV-Methoden...');
-      
-      // Methode 1: REPORT ohne Filter (schnellste) - VERBESSERT
+      // METHODE 1: REPORT ohne Filter (schnellste)
+      console.log('Methode 1: REPORT ohne Filter...');
       const reportBodySimple = `<?xml version="1.0" encoding="utf-8" ?>
         <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
           <d:prop>
@@ -486,7 +404,6 @@ class SimpleCardDAVClient {
         </c:addressbook-query>`;
 
       try {
-        console.log('Methode 1: REPORT ohne Filter...');
         let response = await fetch(addressBookUrl, {
           method: 'REPORT',
           headers: {
@@ -519,7 +436,7 @@ class SimpleCardDAVClient {
         console.log('REPORT Request fehlgeschlagen:', error);
       }
 
-      // Methode 2: PROPFIND mit card:address-data (zweitschnellste) - VERBESSERT
+      // METHODE 2: PROPFIND mit card:address-data (zweitschnellste)
       console.log('Methode 2: PROPFIND mit card:address-data...');
       const propfindWithDataBody = `<?xml version="1.0" encoding="utf-8" ?>
         <d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
@@ -562,7 +479,7 @@ class SimpleCardDAVClient {
         console.log('PROPFIND Request fehlgeschlagen:', error);
       }
 
-      // Methode 3: OPTIMIERTE direkte GET-Requests mit größeren Batches
+      // METHODE 3: OPTIMIERTE direkte GET-Requests mit größeren Batches
       console.log('Methode 3: Optimierte direkte GET-Requests...');
       try {
         const directContacts = await this.getContactsViaDirectRequestsOptimized(addressBookUrl);
@@ -573,19 +490,6 @@ class SimpleCardDAVClient {
         }
       } catch (error) {
         console.log('Optimierte direkte GET-Requests fehlgeschlagen:', error);
-      }
-      
-      // Methode 4: Fallback mit kleineren Batches für bessere Performance
-      console.log('Methode 4: Fallback mit kleineren Batches...');
-      try {
-        const fallbackContacts = await this.getContactsViaDirectRequests(addressBookUrl);
-        
-        if (fallbackContacts.length > 0) {
-          this.contactsCache.set(addressBookUrl, { contacts: fallbackContacts, timestamp: Date.now() });
-          return fallbackContacts;
-        }
-      } catch (error) {
-        console.log('Fallback-Methode fehlgeschlagen:', error);
       }
       
       // Fallback zu Demo-Kontakten
@@ -1042,30 +946,22 @@ class SimpleCardDAVClient {
 
     console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
 
-    // Begrenze die Anzahl der vCards für bessere Performance
-    const maxVcards = 1000; // Maximum 1000 Kontakte laden
-    const limitedVcardUrls = vcardUrls.slice(0, maxVcards);
-    if (vcardUrls.length > maxVcards) {
-      console.log(`Begrenze auf ${maxVcards} vCards von ${vcardUrls.length} gefundenen`);
-    }
-
-    // OPTIMIERT: Kleinere Batches für bessere Performance und Stabilität
+    // OPTIMIERT: Lade vCards in größeren Batches für bessere Performance
     const contacts: CardDAVContact[] = [];
-    const batchSize = 20; // Reduziert von 50 auf 20 für bessere Stabilität
+    const batchSize = 50; // Erhöhe Batch-Größe für bessere Performance
     
-    for (let i = 0; i < limitedVcardUrls.length; i += batchSize) {
-      const batch = limitedVcardUrls.slice(i, i + batchSize);
-      console.log(`Lade optimierten Batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(limitedVcardUrls.length/batchSize)} (${batch.length} vCards)`);
+    for (let i = 0; i < vcardUrls.length; i += batchSize) {
+      const batch = vcardUrls.slice(i, i + batchSize);
+      console.log(`Lade optimierten Batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(vcardUrls.length/batchSize)} (${batch.length} vCards)`);
       
-      // Lade Batch parallel mit optimierten Headers
+      // Lade Batch parallel
       const batchPromises = batch.map(async (vcardUrl) => {
         try {
           const vcardResponse = await fetch(vcardUrl, {
             method: 'GET',
             headers: {
               'Authorization': `Basic ${this.credentials}`,
-              'Accept': 'text/vcard, application/vcard',
-              'Cache-Control': 'no-cache'
+              'Accept': 'text/vcard'
             }
           });
 
@@ -1396,4 +1292,8 @@ class SimpleCardDAVClient {
 }
 
 // Export eine Singleton-Instanz
+// REPARIERT: Performance und Adressbuch-Filterung verbessert
+// - Entfernt komplexe allowedBooks-Checks
+// - Vereinfacht Adressbuch-Suche
+// - Erhöht Batch-Größe für bessere Performance
 export const cardDAVClient = new SimpleCardDAVClient(); 

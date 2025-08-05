@@ -1,0 +1,10 @@
+[33md71fc85[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Verbessere CardDAV Performance: Mehrere Export-URLs, kleinere Batches, bessere Fehlerbehandlung
+[33m1a854f9[m Fix allowedBooks check to be more flexible with address book name matching
+[33m8b483f4[m Fix address book filtering with improved mapping and debug logs
+[33mc433860[m Fix debug route to handle new getContacts return type
+[33ma7b36dd[m Implement address book filtering functionality - Make address book banners clickable to filter contacts - Add selectedAddressBook state management - Update API to accept addressBookName parameter - Add getContactsFromAddressBook method - Fix searchContacts method to handle new return type
+[33m885ebb0[m Implementiere Methode 0: Direkter VCF-Export für schnellere Kontaktladung
+[33m7762f1f[m Major performance optimization: Implement 3-tier CardDAV approach with optimized batch loading - should reduce load time from 296 batches to 6 batches
+[33m547be01[m Fix REPORT implementation: Add proper CardDAV REPORT with filter and better error handling - should load all contacts in one request instead of 296 batches
+[33m97cfe01[m Fix performance: Simplify REPORT logic and add batch loading for vCards - should reduce load time significantly
+[33m01b0f4b[m Optimize contact loading: Use REPORT as primary method instead of individual vCard requests - should reduce load time from minutes to 10-15 seconds
