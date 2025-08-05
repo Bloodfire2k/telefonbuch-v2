@@ -362,15 +362,21 @@ class SimpleCardDAVClient {
               body: reportBody
             });
 
-            if (!response.ok) {
-              console.log(`REPORT Request failed: ${response.status} ${response.statusText}`);
-              throw new Error(`REPORT Request failed: ${response.status} ${response.statusText}`);
-            } else {
-              xmlText = await response.text();
-              console.log('REPORT Response XML (vollständig):', xmlText);
-              console.log('XML Länge:', xmlText.length);
-              console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
-            }
+                         if (!response.ok) {
+               console.log(`REPORT Request failed: ${response.status} ${response.statusText}`);
+               throw new Error(`REPORT Request failed: ${response.status} ${response.statusText}`);
+             } else {
+               xmlText = await response.text();
+               console.log('REPORT Response XML (vollständig):', xmlText);
+               console.log('XML Länge:', xmlText.length);
+               console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+               
+               // Wenn auch REPORT keine vCard-Daten liefert, verwende direkte GET-Requests
+               if (!xmlText.includes('card:address-data')) {
+                 console.log('Auch REPORT liefert keine vCard-Daten, verwende direkte GET-Requests...');
+                 return await this.getContactsViaDirectRequests(fullUrl);
+               }
+             }
           } catch (error) {
             console.log('REPORT Request fehlgeschlagen:', error);
             // Wenn REPORT fehlschlägt, versuche direkte GET-Requests für jede vCard-Datei
