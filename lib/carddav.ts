@@ -265,59 +265,115 @@ class SimpleCardDAVClient {
     return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
   }
 
-  async getContacts(addressBookName: string): Promise<CardDAVContact[]> {
+  async getContacts(addressBookName?: string): Promise<{
+    success: boolean;
+    contacts: CardDAVContact[];
+    addressBooks: { name: string; count: number; url: string }[];
+    error?: string;
+  }> {
+    try {
+      console.log('CardDAV: Starte Kontakt-Laden...');
+      if (addressBookName) {
+        console.log(`CardDAV: Filtere nach Adressbuch: ${addressBookName}`);
+      }
+
+      // Entdecke alle verfügbaren Adressbücher
+      const addressBooks = await this.getAddressBooks();
+      console.log(`CardDAV: ${addressBooks.length} Adressbücher gefunden`);
+
+      let allContacts: CardDAVContact[] = [];
+      const addressBookStats: { name: string; count: number; url: string }[] = [];
+
+      // Wenn ein spezifisches Adressbuch angegeben ist, lade nur dieses
+      if (addressBookName) {
+        const targetAddressBook = addressBooks.find(ab => 
+          ab.displayName.toLowerCase() === addressBookName.toLowerCase()
+        );
+
+        if (!targetAddressBook) {
+          console.log(`CardDAV: Adressbuch "${addressBookName}" nicht gefunden`);
+          return {
+            success: false,
+            contacts: [],
+            addressBooks: [],
+            error: `Adressbuch "${addressBookName}" nicht gefunden`
+          };
+        }
+
+        console.log(`CardDAV: Lade Kontakte aus "${targetAddressBook.displayName}"`);
+        const contacts = await this.getContactsFromAddressBook(targetAddressBook.url);
+        allContacts = contacts;
+        addressBookStats.push({
+          name: targetAddressBook.displayName,
+          count: contacts.length,
+          url: targetAddressBook.url
+        });
+      } else {
+        // Lade Kontakte aus allen Adressbüchern
+        for (const addressBook of addressBooks) {
+          try {
+            console.log(`CardDAV: Lade Kontakte aus "${addressBook.displayName}"`);
+            const contacts = await this.getContactsFromAddressBook(addressBook.url);
+            allContacts = allContacts.concat(contacts);
+            addressBookStats.push({
+              name: addressBook.displayName,
+              count: contacts.length,
+              url: addressBook.url
+            });
+          } catch (error) {
+            console.error(`CardDAV: Fehler beim Laden von "${addressBook.displayName}":`, error);
+          }
+        }
+      }
+
+      console.log(`CardDAV: Insgesamt ${allContacts.length} Kontakte geladen`);
+      return {
+        success: true,
+        contacts: allContacts,
+        addressBooks: addressBookStats
+      };
+    } catch (error) {
+      console.error('CardDAV: Fehler beim Laden der Kontakte:', error);
+      return {
+        success: false,
+        contacts: [],
+        addressBooks: [],
+        error: error instanceof Error ? error.message : 'Unbekannter Fehler'
+      };
+    }
+  }
+
+  private async getContactsFromAddressBook(addressBookUrl: string): Promise<CardDAVContact[]> {
     // If no specific allowedBooks restriction, allow any address book
-    if (this.allowedBooks.length > 0 && !this.allowedBooks.includes(addressBookName)) {
+    if (this.allowedBooks.length > 0 && !this.allowedBooks.some(book => addressBookUrl.includes(book))) {
       throw new Error('Zugriff auf dieses Adressbuch nicht erlaubt');
     }
 
     if (!this.isConfigured) {
-      console.log(`Demo-Modus: Lade Demo-Kontakte für ${addressBookName}`);
-      return this.getDemoContacts(addressBookName);
+      console.log(`Demo-Modus: Lade Demo-Kontakte für ${addressBookUrl}`);
+      return this.getDemoContacts('demo');
     }
 
     try {
       // Check cache - aber nur wenn wir echte vCard-Daten haben
-      const cacheEntry = this.contactsCache.get(addressBookName);
+      const cacheEntry = this.contactsCache.get(addressBookUrl);
       if (cacheEntry && Date.now() - cacheEntry.timestamp < this.CACHE_DURATION && cacheEntry.contacts.length > 0) {
-        console.log(`Cache hit for ${addressBookName} (${cacheEntry.contacts.length} Kontakte)`);
+        console.log(`Cache hit for ${addressBookUrl} (${cacheEntry.contacts.length} Kontakte)`);
         return cacheEntry.contacts;
       }
       
       // Cache leeren wenn keine Kontakte gefunden wurden
       if (cacheEntry && cacheEntry.contacts.length === 0) {
-        console.log(`Cache miss für ${addressBookName} - leere Cache und lade neu`);
-        this.contactsCache.delete(addressBookName);
+        console.log(`Cache miss für ${addressBookUrl} - leere Cache und lade neu`);
+        this.contactsCache.delete(addressBookUrl);
       }
 
-      // Lade die echten Adressbücher, um die URL zu finden
-      console.log(`Debug: Lade Adressbücher für ${addressBookName}...`);
-      const addressBooks = await this.getAddressBooks();
-      const targetAddressBook = addressBooks.find(book => book.displayName === addressBookName);
-      
-      console.log(`Debug: Gefundenes Adressbuch:`, targetAddressBook);
-      
-      let fullUrl: string;
-      if (targetAddressBook?.url) {
-        // Verwende die echte URL aus den Adressbüchern
-        fullUrl = targetAddressBook.url.startsWith('http') 
-          ? targetAddressBook.url 
-          : `${this.serverUrl.split('/remote.php')[0]}${targetAddressBook.url}`;
-        console.log(`Debug: Verwende URL aus Adressbüchern: ${fullUrl}`);
-      } else {
-        // Fallback: Konstruiere URL wie vorher
-        const addressBookPath = `${encodeURIComponent(addressBookName)}/`;
-        const addressBookBaseUrl = this.serverUrl.replace('/principals/users/', '/addressbooks/users/');
-        fullUrl = `${addressBookBaseUrl}${addressBookPath}`;
-        console.log(`Debug: Verwende Fallback-URL: ${fullUrl}`);
-      }
-      
-      console.log(`Versuche Kontakte zu laden von: ${fullUrl}`);
+      console.log(`Versuche Kontakte zu laden von: ${addressBookUrl}`);
       
       // NEUE METHODE 0: Direkter Export als eine VCF-Datei (schnellste)
       console.log('Methode 0: Direkter Export als VCF-Datei...');
       try {
-        const exportUrl = `${fullUrl}?export`;
+        const exportUrl = `${addressBookUrl}?export`;
         console.log(`Versuche Export von: ${exportUrl}`);
         
         const response = await fetch(exportUrl, {
@@ -335,11 +391,11 @@ class SimpleCardDAVClient {
           
           if (vcfContent.includes('BEGIN:VCARD')) {
             // Parse die große VCF-Datei in einzelne Kontakte
-            const contacts = this.parseVCFExport(vcfContent, fullUrl);
-            console.log(`Export Kontakte geparst: ${contacts.length} für ${addressBookName}`);
+            const contacts = this.parseVCFExport(vcfContent, this.baseUrl);
+            console.log(`Export Kontakte geparst: ${contacts.length} für ${addressBookUrl}`);
             
             if (contacts.length > 0) {
-              this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
+              this.contactsCache.set(addressBookUrl, { contacts, timestamp: Date.now() });
               return contacts;
             }
           } else {
@@ -366,7 +422,7 @@ class SimpleCardDAVClient {
 
       try {
         console.log('Methode 1: REPORT ohne Filter...');
-        let response = await fetch(fullUrl, {
+        let response = await fetch(addressBookUrl, {
           method: 'REPORT',
           headers: {
             'Authorization': `Basic ${this.credentials}`,
@@ -382,12 +438,12 @@ class SimpleCardDAVClient {
           console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
 
           // Parse Kontakte aus der REPORT Response
-          const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
-          console.log(`REPORT Kontakte geparst: ${contacts.length} für ${addressBookName}`);
+          const contacts = this.parseContactsFromXML(xmlText, addressBookUrl);
+          console.log(`REPORT Kontakte geparst: ${contacts.length} für ${addressBookUrl}`);
 
           // Wenn Kontakte gefunden wurden, cache und zurückgeben
           if (contacts.length > 0) {
-            this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
+            this.contactsCache.set(addressBookUrl, { contacts, timestamp: Date.now() });
             return contacts;
           }
         } else {
@@ -408,7 +464,7 @@ class SimpleCardDAVClient {
         </d:propfind>`;
 
       try {
-        let response = await fetch(fullUrl, {
+        let response = await fetch(addressBookUrl, {
           method: 'PROPFIND',
           headers: {
             'Authorization': `Basic ${this.credentials}`,
@@ -424,12 +480,12 @@ class SimpleCardDAVClient {
           console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
 
           // Parse Kontakte aus der PROPFIND Response
-          const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
-          console.log(`PROPFIND Kontakte geparst: ${contacts.length} für ${addressBookName}`);
+          const contacts = this.parseContactsFromXML(xmlText, addressBookUrl);
+          console.log(`PROPFIND Kontakte geparst: ${contacts.length} für ${addressBookUrl}`);
 
           // Wenn Kontakte gefunden wurden, cache und zurückgeben
           if (contacts.length > 0) {
-            this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
+            this.contactsCache.set(addressBookUrl, { contacts, timestamp: Date.now() });
             return contacts;
           }
         } else {
@@ -441,21 +497,21 @@ class SimpleCardDAVClient {
 
       // Methode 3: OPTIMIERTE direkte GET-Requests mit größeren Batches
       console.log('Methode 3: Optimierte direkte GET-Requests...');
-      const directContacts = await this.getContactsViaDirectRequestsOptimized(fullUrl);
+      const directContacts = await this.getContactsViaDirectRequestsOptimized(addressBookUrl);
       
       if (directContacts.length > 0) {
-        this.contactsCache.set(addressBookName, { contacts: directContacts, timestamp: Date.now() });
+        this.contactsCache.set(addressBookUrl, { contacts: directContacts, timestamp: Date.now() });
         return directContacts;
       }
       
       // Fallback zu Demo-Kontakten
-      console.log(`Keine echten Kontakte gefunden für ${addressBookName}, verwende Demo-Kontakte`);
-      return this.getDemoContacts(addressBookName);
+      console.log(`Keine echten Kontakte gefunden für ${addressBookUrl}, verwende Demo-Kontakte`);
+      return this.getDemoContacts('demo');
     } catch (error) {
       console.error('Fehler beim Laden der Kontakte:', error);
       
       // Return demo contacts if real connection fails
-      return this.getDemoContacts(addressBookName);
+      return this.getDemoContacts('demo');
     }
   }
 
@@ -1168,7 +1224,8 @@ class SimpleCardDAVClient {
       contacts = cacheEntry.contacts;
     } else {
       console.log(`Cache miss für Suche in ${addressBookName} - lade Kontakte`);
-      contacts = await this.getContacts(addressBookName);
+      const result = await this.getContacts(addressBookName);
+      contacts = result.success ? result.contacts : [];
     }
     
     if (!searchTerm) return contacts;
