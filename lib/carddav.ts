@@ -277,29 +277,18 @@ class SimpleCardDAVClient {
     }
 
     try {
-             // Check cache - aber nur wenn wir echte vCard-Daten haben
-       const cacheEntry = this.contactsCache.get(addressBookName);
-       if (cacheEntry && Date.now() - cacheEntry.timestamp < this.CACHE_DURATION && cacheEntry.contacts.length > 0) {
-         console.log(`Cache hit for ${addressBookName} (${cacheEntry.contacts.length} Kontakte)`);
-         return cacheEntry.contacts;
-       }
-       
-       // Cache leeren wenn keine Kontakte gefunden wurden
-       if (cacheEntry && cacheEntry.contacts.length === 0) {
-         console.log(`Cache miss für ${addressBookName} - leere Cache und lade neu`);
-         this.contactsCache.delete(addressBookName);
-       }
-
-             // PROPFIND request to get all contacts
-       const propfindBody = `<?xml version="1.0" encoding="utf-8" ?>
-         <d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
-           <d:prop>
-             <d:getetag />
-             <card:address-data />
-           </d:prop>
-         </d:propfind>`;
-
-       // REPORT request für effiziente Kontakt-Abfrage (wird später definiert)
+      // Check cache - aber nur wenn wir echte vCard-Daten haben
+      const cacheEntry = this.contactsCache.get(addressBookName);
+      if (cacheEntry && Date.now() - cacheEntry.timestamp < this.CACHE_DURATION && cacheEntry.contacts.length > 0) {
+        console.log(`Cache hit for ${addressBookName} (${cacheEntry.contacts.length} Kontakte)`);
+        return cacheEntry.contacts;
+      }
+      
+      // Cache leeren wenn keine Kontakte gefunden wurden
+      if (cacheEntry && cacheEntry.contacts.length === 0) {
+        console.log(`Cache miss für ${addressBookName} - leere Cache und lade neu`);
+        this.contactsCache.delete(addressBookName);
+      }
 
       // Lade die echten Adressbücher, um die URL zu finden
       console.log(`Debug: Lade Adressbücher für ${addressBookName}...`);
@@ -315,15 +304,53 @@ class SimpleCardDAVClient {
           ? targetAddressBook.url 
           : `${this.serverUrl.split('/remote.php')[0]}${targetAddressBook.url}`;
         console.log(`Debug: Verwende URL aus Adressbüchern: ${fullUrl}`);
-             } else {
-         // Fallback: Konstruiere URL wie vorher
-         const addressBookPath = `${encodeURIComponent(addressBookName)}/`;
-         const addressBookBaseUrl = this.serverUrl.replace('/principals/users/', '/addressbooks/users/');
-         fullUrl = `${addressBookBaseUrl}${addressBookPath}`;
-         console.log(`Debug: Verwende Fallback-URL: ${fullUrl}`);
-       }
+      } else {
+        // Fallback: Konstruiere URL wie vorher
+        const addressBookPath = `${encodeURIComponent(addressBookName)}/`;
+        const addressBookBaseUrl = this.serverUrl.replace('/principals/users/', '/addressbooks/users/');
+        fullUrl = `${addressBookBaseUrl}${addressBookPath}`;
+        console.log(`Debug: Verwende Fallback-URL: ${fullUrl}`);
+      }
       
-                   console.log(`Versuche Kontakte zu laden von: ${fullUrl}`);
+      console.log(`Versuche Kontakte zu laden von: ${fullUrl}`);
+      
+      // NEUE METHODE 0: Direkter Export als eine VCF-Datei (schnellste)
+      console.log('Methode 0: Direkter Export als VCF-Datei...');
+      try {
+        const exportUrl = `${fullUrl}?export`;
+        console.log(`Versuche Export von: ${exportUrl}`);
+        
+        const response = await fetch(exportUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${this.credentials}`,
+            'Accept': 'text/vcard, application/vcard, */*',
+            'Cache-Control': 'no-cache'
+          }
+        });
+
+        if (response.ok) {
+          const vcfContent = await response.text();
+          console.log(`Export erfolgreich! VCF Länge: ${vcfContent.length} Zeichen`);
+          
+          if (vcfContent.includes('BEGIN:VCARD')) {
+            // Parse die große VCF-Datei in einzelne Kontakte
+            const contacts = this.parseVCFExport(vcfContent, fullUrl);
+            console.log(`Export Kontakte geparst: ${contacts.length} für ${addressBookName}`);
+            
+            if (contacts.length > 0) {
+              this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
+              return contacts;
+            }
+          } else {
+            console.log('Export erfolgreich, aber keine vCard-Daten gefunden');
+          }
+        } else {
+          console.log(`Export Request failed: ${response.status} ${response.statusText}`);
+        }
+      } catch (error) {
+        console.log(`Export Methode fehlgeschlagen:`, error);
+      }
       
       // OPTIMIERT: Verwende verschiedene CardDAV-Methoden für maximale Performance
       console.log('Versuche optimierte CardDAV-Methoden...');
@@ -1023,6 +1050,42 @@ class SimpleCardDAVClient {
     }
 
     console.log(`Insgesamt ${contacts.length} Kontakte via direkte Requests geladen`);
+    return contacts;
+  }
+
+  private parseVCFExport(vcfContent: string, baseUrl: string): CardDAVContact[] {
+    console.log('Parse VCF Export...');
+    
+    // Teile die große VCF-Datei in einzelne vCards auf
+    const vcardRegex = /BEGIN:VCARD[\s\S]*?END:VCARD/g;
+    const vcardMatches = vcfContent.match(vcardRegex);
+    
+    if (!vcardMatches) {
+      console.log('Keine vCard-Einträge in der Export-Datei gefunden');
+      return [];
+    }
+    
+    console.log(`Gefundene vCard-Einträge: ${vcardMatches.length}`);
+    
+    const contacts: CardDAVContact[] = [];
+    
+    for (let i = 0; i < vcardMatches.length; i++) {
+      const vcard = vcardMatches[i];
+      try {
+        // Generiere eine eindeutige URL für jeden Kontakt
+        const contactId = `export-${i}-${Date.now()}`;
+        const contactUrl = `${baseUrl}${contactId}.vcf`;
+        
+        const contact = this.parseVCard(vcard, contactUrl);
+        if (contact.name !== 'Unbekannt') {
+          contacts.push(contact);
+        }
+      } catch (error) {
+        console.log(`Fehler beim Parsen von vCard ${i}:`, error);
+      }
+    }
+    
+    console.log(`Export erfolgreich geparst: ${contacts.length} Kontakte`);
     return contacts;
   }
 
