@@ -916,7 +916,7 @@ class SimpleCardDAVClient {
 
     // Lade jede vCard-Datei einzeln
     const contacts: CardDAVContact[] = [];
-    for (const vcardUrl of vcardUrls.slice(0, 10)) { // Limitiere auf 10 für Test
+    for (const vcardUrl of vcardUrls) { // Lade alle vCard-Dateien
       try {
         console.log('Lade vCard von:', vcardUrl);
         const vcardResponse = await fetch(vcardUrl, {
