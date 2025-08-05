@@ -859,6 +859,13 @@ class SimpleCardDAVClient {
   private async getContactsViaDirectRequests(addressBookUrl: string): Promise<CardDAVContact[]> {
     console.log('Lade Kontakte via direkte GET-Requests...');
     
+    // Konstruiere vollständige URL für den initialen PROPFIND Request
+    const fullAddressBookUrl = addressBookUrl.startsWith('http') 
+      ? addressBookUrl 
+      : `${this.baseUrl}${addressBookUrl}`;
+    
+    console.log('Vollständige Adressbuch-URL für PROPFIND:', fullAddressBookUrl);
+    
     // Zuerst PROPFIND um alle vCard-Dateien zu finden
     const propfindBody = `<?xml version="1.0" encoding="utf-8" ?>
       <d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
@@ -867,7 +874,7 @@ class SimpleCardDAVClient {
         </d:prop>
       </d:propfind>`;
 
-    const response = await fetch(addressBookUrl, {
+    const response = await fetch(fullAddressBookUrl, {
       method: 'PROPFIND',
       headers: {
         'Authorization': `Basic ${this.credentials}`,
