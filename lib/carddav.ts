@@ -264,12 +264,18 @@ class SimpleCardDAVClient {
     }
 
     try {
-      // Check cache
-      const cacheEntry = this.contactsCache.get(addressBookName);
-      if (cacheEntry && Date.now() - cacheEntry.timestamp < this.CACHE_DURATION) {
-        console.log(`Cache hit for ${addressBookName}`);
-        return cacheEntry.contacts;
-      }
+             // Check cache - aber nur wenn wir echte vCard-Daten haben
+       const cacheEntry = this.contactsCache.get(addressBookName);
+       if (cacheEntry && Date.now() - cacheEntry.timestamp < this.CACHE_DURATION && cacheEntry.contacts.length > 0) {
+         console.log(`Cache hit for ${addressBookName} (${cacheEntry.contacts.length} Kontakte)`);
+         return cacheEntry.contacts;
+       }
+       
+       // Cache leeren wenn keine Kontakte gefunden wurden
+       if (cacheEntry && cacheEntry.contacts.length === 0) {
+         console.log(`Cache miss für ${addressBookName} - leere Cache und lade neu`);
+         this.contactsCache.delete(addressBookName);
+       }
 
              // PROPFIND request to get all contacts
        const propfindBody = `<?xml version="1.0" encoding="utf-8" ?>
