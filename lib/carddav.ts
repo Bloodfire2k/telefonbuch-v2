@@ -57,10 +57,13 @@ class SimpleCardDAVClient {
       const allowedBooksStr = process.env.ALLOWED_ADDRESSBOOKS || '';
       
       this.allowedBooks = allowedBooksStr.split(',').map(book => book.trim()).filter(book => book.length > 0);
+      console.log(`DEBUG: ALLOWED_ADDRESSBOOKS env var: "${allowedBooksStr}"`);
+      console.log(`DEBUG: Parsed allowedBooks:`, this.allowedBooks);
       
       // Wenn keine Adressbücher konfiguriert sind und CardDAV verfügbar ist, verwende alle gefundenen
       if (this.allowedBooks.length === 0) {
         this.allowedBooks = []; // Wird dynamisch gefüllt
+        console.log(`DEBUG: No allowed books configured, will allow all found address books`);
       }
 
       if (this.serverUrl && username && password) {
@@ -364,9 +367,41 @@ class SimpleCardDAVClient {
   }
 
   private async getContactsFromAddressBook(addressBookUrl: string): Promise<CardDAVContact[]> {
+    console.log(`DEBUG: getContactsFromAddressBook called with URL: "${addressBookUrl}"`);
+    console.log(`DEBUG: this.allowedBooks (at start of method):`, this.allowedBooks);
+    console.log(`DEBUG: this.allowedBooks.length: ${this.allowedBooks.length}`);
+
     // If no specific allowedBooks restriction, allow any address book
-    if (this.allowedBooks.length > 0 && !this.allowedBooks.some(book => addressBookUrl.includes(book))) {
-      throw new Error('Zugriff auf dieses Adressbuch nicht erlaubt');
+    if (this.allowedBooks.length > 0) {
+      const isAllowed = this.allowedBooks.some(book => {
+        // Try multiple matching strategies
+        const bookLower = book.toLowerCase();
+        const urlLower = addressBookUrl.toLowerCase();
+        
+        // Strategy 1: Direct inclusion
+        const directMatch = urlLower.includes(bookLower);
+        
+        // Strategy 2: Check for cleaned name patterns
+        const cleanedBook = bookLower.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        const cleanedMatch = urlLower.includes(cleanedBook);
+        
+        // Strategy 3: Check for partial matches (e.g., "edeka" in "edeka-adressbuch")
+        const words = bookLower.split(/\s+/);
+        const partialMatch = words.some(word => word.length > 2 && urlLower.includes(word));
+        
+        const check = directMatch || cleanedMatch || partialMatch;
+        console.log(`DEBUG: Checking "${book}" against "${addressBookUrl}":`);
+        console.log(`  - Direct match: ${directMatch}`);
+        console.log(`  - Cleaned match: ${cleanedMatch} (cleaned: "${cleanedBook}")`);
+        console.log(`  - Partial match: ${partialMatch} (words: ${words.join(', ')})`);
+        console.log(`  - Final result: ${check}`);
+        
+        return check;
+      });
+      if (!isAllowed) {
+        console.log(`DEBUG: Access denied for URL: "${addressBookUrl}" because it does not include any of:`, this.allowedBooks);
+        throw new Error('Zugriff auf dieses Adressbuch nicht erlaubt');
+      }
     }
 
     if (!this.isConfigured) {
