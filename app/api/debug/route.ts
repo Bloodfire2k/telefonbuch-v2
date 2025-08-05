@@ -9,6 +9,15 @@ export async function GET(request: NextRequest) {
     console.log('Password set:', !!process.env.CARDAV_PASSWORD);
     console.log('Use Real CardDAV:', process.env.USE_REAL_CARDAV);
     console.log('Allowed Addressbooks:', process.env.ALLOWED_ADDRESSBOOKS);
+    console.log('Node ENV:', process.env.NODE_ENV);
+    
+    // Alle Umgebungsvariablen auflisten
+    console.log('=== ALL ENVIRONMENT VARIABLES ===');
+    Object.keys(process.env).forEach(key => {
+      if (key.includes('CARDAV') || key.includes('NODE') || key.includes('USE')) {
+        console.log(`${key}: ${process.env[key]}`);
+      }
+    });
     
     // Teste CardDAV-Verbindung
     console.log('=== TESTING CARDAV CONNECTION ===');
@@ -30,7 +39,10 @@ export async function GET(request: NextRequest) {
         passwordSet: !!process.env.CARDAV_PASSWORD,
         useRealCardDAV: process.env.USE_REAL_CARDAV,
         allowedAddressbooks: process.env.ALLOWED_ADDRESSBOOKS,
-        nodeEnv: process.env.NODE_ENV
+        nodeEnv: process.env.NODE_ENV,
+        allEnvVars: Object.keys(process.env).filter(key => 
+          key.includes('CARDAV') || key.includes('NODE') || key.includes('USE')
+        )
       }
     });
   } catch (error) {
@@ -44,7 +56,10 @@ export async function GET(request: NextRequest) {
         passwordSet: !!process.env.CARDAV_PASSWORD,
         useRealCardDAV: process.env.USE_REAL_CARDAV,
         allowedAddressbooks: process.env.ALLOWED_ADDRESSBOOKS,
-        nodeEnv: process.env.NODE_ENV
+        nodeEnv: process.env.NODE_ENV,
+        allEnvVars: Object.keys(process.env).filter(key => 
+          key.includes('CARDAV') || key.includes('NODE') || key.includes('USE')
+        )
       }
     }, { status: 500 });
   }
