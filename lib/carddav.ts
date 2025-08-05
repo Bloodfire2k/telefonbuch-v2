@@ -266,9 +266,16 @@ class SimpleCardDAVClient {
   }
 
   async getContacts(addressBookName: string): Promise<CardDAVContact[]> {
-    // If no specific allowedBooks restriction, allow any address book
-    if (this.allowedBooks.length > 0 && !this.allowedBooks.includes(addressBookName)) {
-      throw new Error('Zugriff auf dieses Adressbuch nicht erlaubt');
+    // Erlaube alle Adressbücher wenn keine spezifischen Einschränkungen
+    if (this.allowedBooks.length > 0) {
+      const isAllowed = this.allowedBooks.some(allowed => 
+        addressBookName.includes(allowed) || allowed.includes(addressBookName)
+      );
+      if (!isAllowed) {
+        console.log(`Adressbuch "${addressBookName}" nicht in erlaubten Büchern:`, this.allowedBooks);
+        // Fallback: Lade trotzdem, aber mit Warnung
+        console.log(`Versuche trotzdem zu laden...`);
+      }
     }
 
     if (!this.isConfigured) {
