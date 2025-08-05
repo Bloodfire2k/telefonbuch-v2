@@ -236,6 +236,7 @@ class SimpleCardDAVClient {
       const cleanName = this.cleanAddressBookName(book.displayName);
       // Speichere das Mapping zwischen bereinigtem Namen und ursprünglichem Namen
       this.addressBookMapping.set(cleanName, {originalName: book.displayName, url: book.url});
+      console.log(`CardDAV: Mapping gesetzt: "${cleanName}" -> "${book.displayName}"`);
       
       return {
         displayName: cleanName,
@@ -286,12 +287,31 @@ class SimpleCardDAVClient {
 
       // Wenn ein spezifisches Adressbuch angegeben ist, lade nur dieses
       if (addressBookName) {
-        const targetAddressBook = addressBooks.find(ab => 
-          ab.displayName.toLowerCase() === addressBookName.toLowerCase()
-        );
+        console.log(`CardDAV: Suche nach Adressbuch: "${addressBookName}"`);
+        console.log(`CardDAV: Verfügbare Adressbücher:`, addressBooks.map(ab => ab.displayName));
+        console.log(`CardDAV: Mapping Keys:`, Array.from(this.addressBookMapping.keys()));
+        
+        // Verwende das Mapping, um den ursprünglichen Namen zu finden
+        const mapping = this.addressBookMapping.get(addressBookName);
+        let targetAddressBook;
+        
+        if (mapping) {
+          console.log(`CardDAV: Mapping gefunden für "${addressBookName}":`, mapping);
+          // Suche nach dem ursprünglichen Namen
+          targetAddressBook = addressBooks.find(ab => 
+            ab.displayName === mapping.originalName
+          );
+        } else {
+          console.log(`CardDAV: Kein Mapping für "${addressBookName}", verwende Fallback`);
+          // Fallback: Suche nach dem bereinigten Namen
+          targetAddressBook = addressBooks.find(ab => 
+            ab.displayName.toLowerCase() === addressBookName.toLowerCase()
+          );
+        }
 
         if (!targetAddressBook) {
           console.log(`CardDAV: Adressbuch "${addressBookName}" nicht gefunden`);
+          console.log(`CardDAV: Mapping für "${addressBookName}":`, mapping);
           return {
             success: false,
             contacts: [],
