@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cardDAVClient } from '@/lib/carddav';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     console.log('=== DEBUG INFO ===');
