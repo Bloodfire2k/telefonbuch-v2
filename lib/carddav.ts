@@ -368,77 +368,28 @@ class SimpleCardDAVClient {
       console.log('Response XML Länge:', xmlText.length);
       console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
 
-      // Wenn keine vCard-Daten gefunden wurden, verwende direkte GET-Requests als letzte Option
-      if (!xmlText.includes('card:address-data')) {
-        console.log('Keine vCard-Daten in Response gefunden, verwende direkte GET-Requests...');
-        return await this.getContactsViaDirectRequests(fullUrl);
-      }
-       
-                      const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
-        
-        console.log(`Kontakte geparst: ${contacts.length} für ${addressBookName}`);
-        
-        // Wenn keine Kontakte gefunden wurden, versuche REPORT
-        if (contacts.length === 0) {
-          console.log(`Keine Kontakte in PROPFIND gefunden, versuche REPORT...`);
-          
-          try {
-            const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
-              <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
-                <d:prop>
-                  <d:getetag />
-                  <c:address-data />
-                </d:prop>
-              </c:addressbook-query>`;
+      // Parse Kontakte aus der Response
+      const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
+      console.log(`Kontakte geparst: ${contacts.length} für ${addressBookName}`);
 
-            const reportResponse = await fetch(fullUrl, {
-              method: 'REPORT',
-              headers: {
-                'Authorization': `Basic ${this.credentials}`,
-                'Content-Type': 'application/xml',
-                'Depth': '1'
-              },
-              body: reportBody
-            });
-
-            if (reportResponse.ok) {
-              const reportXmlText = await reportResponse.text();
-              console.log('REPORT Response XML (vollständig):', reportXmlText);
-              console.log('XML Länge:', reportXmlText.length);
-              console.log('Enthält card:address-data:', reportXmlText.includes('card:address-data'));
-              
-              const reportContacts = this.parseContactsFromXML(reportXmlText, targetAddressBook?.url || '');
-              console.log(`REPORT Kontakte geparst: ${reportContacts.length} für ${addressBookName}`);
-              
-              if (reportContacts.length > 0) {
-                this.contactsCache.set(addressBookName, { contacts: reportContacts, timestamp: Date.now() });
-                return reportContacts;
-              }
-            } else {
-              console.log(`REPORT Request failed: ${reportResponse.status} ${reportResponse.statusText}`);
-            }
-          } catch (error) {
-            console.log('REPORT Request error:', error);
-          }
-          
-          // Wenn REPORT auch keine Kontakte liefert, versuche direkte GET-Requests
-          console.log(`Versuche direkte GET-Requests für vCard-Daten...`);
-          const directContacts = await this.getContactsViaDirectRequests(targetAddressBook?.url || '');
-          
-          if (directContacts.length > 0) {
-            this.contactsCache.set(addressBookName, { contacts: directContacts, timestamp: Date.now() });
-            return directContacts;
-          }
-          
-          // Fallback zu Demo-Kontakten
-          console.log(`Keine echten Kontakte gefunden für ${addressBookName}, verwende Demo-Kontakte`);
-          return this.getDemoContacts(addressBookName);
-        }
-        
-        // Update cache
+      // Wenn Kontakte gefunden wurden, cache und zurückgeben
+      if (contacts.length > 0) {
         this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
-        
         return contacts;
+      }
+
+      // Wenn keine Kontakte gefunden wurden, versuche direkte GET-Requests als letzte Option
+      console.log('Keine Kontakte in Response gefunden, verwende direkte GET-Requests...');
+      const directContacts = await this.getContactsViaDirectRequests(fullUrl);
+      
+      if (directContacts.length > 0) {
+        this.contactsCache.set(addressBookName, { contacts: directContacts, timestamp: Date.now() });
+        return directContacts;
+      }
+      
+      // Fallback zu Demo-Kontakten
+      console.log(`Keine echten Kontakte gefunden für ${addressBookName}, verwende Demo-Kontakte`);
+      return this.getDemoContacts(addressBookName);
     } catch (error) {
       console.error('Fehler beim Laden der Kontakte:', error);
       
@@ -890,34 +841,46 @@ class SimpleCardDAVClient {
 
     console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
 
-    // Lade jede vCard-Datei einzeln
+    // OPTIMIERT: Lade vCards in Batches für bessere Performance
     const contacts: CardDAVContact[] = [];
-    for (const vcardUrl of vcardUrls) { // Lade alle vCard-Dateien
-      try {
-        console.log('Lade vCard von:', vcardUrl);
-        const vcardResponse = await fetch(vcardUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Basic ${this.credentials}`,
-            'Accept': 'text/vcard'
-          }
-        });
+    const batchSize = 10; // Lade 10 vCards parallel
+    
+    for (let i = 0; i < vcardUrls.length; i += batchSize) {
+      const batch = vcardUrls.slice(i, i + batchSize);
+      console.log(`Lade Batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(vcardUrls.length/batchSize)} (${batch.length} vCards)`);
+      
+      // Lade Batch parallel
+      const batchPromises = batch.map(async (vcardUrl) => {
+        try {
+          const vcardResponse = await fetch(vcardUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${this.credentials}`,
+              'Accept': 'text/vcard'
+            }
+          });
 
-        if (vcardResponse.ok) {
-          const vcardText = await vcardResponse.text();
-          console.log('vCard Inhalt:', vcardText.substring(0, 200) + '...');
-          
-          const contact = this.parseVCard(vcardText, vcardUrl);
-          if (contact.name !== 'Unbekannt') {
-            contacts.push(contact);
-            console.log('Kontakt hinzugefügt:', contact.name);
+          if (vcardResponse.ok) {
+            const vcardText = await vcardResponse.text();
+            const contact = this.parseVCard(vcardText, vcardUrl);
+            if (contact.name !== 'Unbekannt') {
+              return contact;
+            }
+          } else {
+            console.log(`Fehler beim Laden von ${vcardUrl}: ${vcardResponse.status}`);
           }
-        } else {
-          console.log(`Fehler beim Laden von ${vcardUrl}: ${vcardResponse.status}`);
+        } catch (error) {
+          console.log(`Fehler beim Laden von ${vcardUrl}:`, error);
         }
-      } catch (error) {
-        console.log(`Fehler beim Laden von ${vcardUrl}:`, error);
-      }
+        return null;
+      });
+      
+      // Warte auf Batch-Completion
+      const batchResults = await Promise.all(batchPromises);
+      const validContacts = batchResults.filter(contact => contact !== null) as CardDAVContact[];
+      contacts.push(...validContacts);
+      
+      console.log(`Batch ${Math.floor(i/batchSize) + 1} abgeschlossen: ${validContacts.length} Kontakte geladen`);
     }
 
     console.log(`Insgesamt ${contacts.length} Kontakte via direkte Requests geladen`);
