@@ -425,39 +425,49 @@ class SimpleCardDAVClient {
 
       console.log(`Versuche Kontakte zu laden von: ${addressBookUrl}`);
       
-      // NEUE METHODE 0: Direkter Export als eine VCF-Datei (schnellste)
+      // METHODE 0: Direkter Export als eine VCF-Datei (schnellste) - VERBESSERT
       console.log('Methode 0: Direkter Export als VCF-Datei...');
       try {
-        const exportUrl = `${addressBookUrl}?export`;
-        console.log(`Versuche Export von: ${exportUrl}`);
+        // Versuche verschiedene Export-URLs
+        const exportUrls = [
+          `${addressBookUrl}?export`,
+          `${addressBookUrl}?export=vcf`,
+          `${addressBookUrl.replace('/remote.php/dav/addressbooks/', '/remote.php/dav/')}?export`,
+          `${addressBookUrl.replace('/remote.php/dav/addressbooks/', '/remote.php/dav/')}?export=vcf`
+        ];
         
-        const response = await fetch(exportUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Basic ${this.credentials}`,
-            'Accept': 'text/vcard, application/vcard, */*',
-            'Cache-Control': 'no-cache'
-          }
-        });
-
-        if (response.ok) {
-          const vcfContent = await response.text();
-          console.log(`Export erfolgreich! VCF Länge: ${vcfContent.length} Zeichen`);
+        for (const exportUrl of exportUrls) {
+          console.log(`Versuche Export von: ${exportUrl}`);
           
-          if (vcfContent.includes('BEGIN:VCARD')) {
-            // Parse die große VCF-Datei in einzelne Kontakte
-            const contacts = this.parseVCFExport(vcfContent, this.baseUrl);
-            console.log(`Export Kontakte geparst: ${contacts.length} für ${addressBookUrl}`);
+          const response = await fetch(exportUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${this.credentials}`,
+              'Accept': 'text/vcard, application/vcard, */*',
+              'Cache-Control': 'no-cache',
+              'User-Agent': 'Mozilla/5.0 (compatible; CardDAV-Client)'
+            }
+          });
+
+          if (response.ok) {
+            const vcfContent = await response.text();
+            console.log(`Export erfolgreich! VCF Länge: ${vcfContent.length} Zeichen`);
             
-            if (contacts.length > 0) {
-              this.contactsCache.set(addressBookUrl, { contacts, timestamp: Date.now() });
-              return contacts;
+            if (vcfContent.includes('BEGIN:VCARD')) {
+              // Parse die große VCF-Datei in einzelne Kontakte
+              const contacts = this.parseVCFExport(vcfContent, this.baseUrl);
+              console.log(`Export Kontakte geparst: ${contacts.length} für ${addressBookUrl}`);
+              
+              if (contacts.length > 0) {
+                this.contactsCache.set(addressBookUrl, { contacts, timestamp: Date.now() });
+                return contacts;
+              }
+            } else {
+              console.log('Export erfolgreich, aber keine vCard-Daten gefunden');
             }
           } else {
-            console.log('Export erfolgreich, aber keine vCard-Daten gefunden');
+            console.log(`Export Request failed für ${exportUrl}: ${response.status} ${response.statusText}`);
           }
-        } else {
-          console.log(`Export Request failed: ${response.status} ${response.statusText}`);
         }
       } catch (error) {
         console.log(`Export Methode fehlgeschlagen:`, error);
@@ -466,7 +476,7 @@ class SimpleCardDAVClient {
       // OPTIMIERT: Verwende verschiedene CardDAV-Methoden für maximale Performance
       console.log('Versuche optimierte CardDAV-Methoden...');
       
-      // Methode 1: REPORT ohne Filter (schnellste)
+      // Methode 1: REPORT ohne Filter (schnellste) - VERBESSERT
       const reportBodySimple = `<?xml version="1.0" encoding="utf-8" ?>
         <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
           <d:prop>
@@ -482,7 +492,8 @@ class SimpleCardDAVClient {
           headers: {
             'Authorization': `Basic ${this.credentials}`,
             'Content-Type': 'application/xml',
-            'Depth': '1'
+            'Depth': '1',
+            'User-Agent': 'Mozilla/5.0 (compatible; CardDAV-Client)'
           },
           body: reportBodySimple
         });
@@ -508,7 +519,7 @@ class SimpleCardDAVClient {
         console.log('REPORT Request fehlgeschlagen:', error);
       }
 
-      // Methode 2: PROPFIND mit card:address-data (zweitschnellste)
+      // Methode 2: PROPFIND mit card:address-data (zweitschnellste) - VERBESSERT
       console.log('Methode 2: PROPFIND mit card:address-data...');
       const propfindWithDataBody = `<?xml version="1.0" encoding="utf-8" ?>
         <d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
@@ -524,7 +535,8 @@ class SimpleCardDAVClient {
           headers: {
             'Authorization': `Basic ${this.credentials}`,
             'Content-Type': 'application/xml',
-            'Depth': '1'
+            'Depth': '1',
+            'User-Agent': 'Mozilla/5.0 (compatible; CardDAV-Client)'
           },
           body: propfindWithDataBody
         });
@@ -552,11 +564,28 @@ class SimpleCardDAVClient {
 
       // Methode 3: OPTIMIERTE direkte GET-Requests mit größeren Batches
       console.log('Methode 3: Optimierte direkte GET-Requests...');
-      const directContacts = await this.getContactsViaDirectRequestsOptimized(addressBookUrl);
+      try {
+        const directContacts = await this.getContactsViaDirectRequestsOptimized(addressBookUrl);
+        
+        if (directContacts.length > 0) {
+          this.contactsCache.set(addressBookUrl, { contacts: directContacts, timestamp: Date.now() });
+          return directContacts;
+        }
+      } catch (error) {
+        console.log('Optimierte direkte GET-Requests fehlgeschlagen:', error);
+      }
       
-      if (directContacts.length > 0) {
-        this.contactsCache.set(addressBookUrl, { contacts: directContacts, timestamp: Date.now() });
-        return directContacts;
+      // Methode 4: Fallback mit kleineren Batches für bessere Performance
+      console.log('Methode 4: Fallback mit kleineren Batches...');
+      try {
+        const fallbackContacts = await this.getContactsViaDirectRequests(addressBookUrl);
+        
+        if (fallbackContacts.length > 0) {
+          this.contactsCache.set(addressBookUrl, { contacts: fallbackContacts, timestamp: Date.now() });
+          return fallbackContacts;
+        }
+      } catch (error) {
+        console.log('Fallback-Methode fehlgeschlagen:', error);
       }
       
       // Fallback zu Demo-Kontakten
@@ -1013,13 +1042,20 @@ class SimpleCardDAVClient {
 
     console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
 
-    // OPTIMIERT: Größere Batches und bessere Performance
+    // Begrenze die Anzahl der vCards für bessere Performance
+    const maxVcards = 1000; // Maximum 1000 Kontakte laden
+    const limitedVcardUrls = vcardUrls.slice(0, maxVcards);
+    if (vcardUrls.length > maxVcards) {
+      console.log(`Begrenze auf ${maxVcards} vCards von ${vcardUrls.length} gefundenen`);
+    }
+
+    // OPTIMIERT: Kleinere Batches für bessere Performance und Stabilität
     const contacts: CardDAVContact[] = [];
-    const batchSize = 50; // Erhöht von 10 auf 50 für bessere Performance
+    const batchSize = 20; // Reduziert von 50 auf 20 für bessere Stabilität
     
-    for (let i = 0; i < vcardUrls.length; i += batchSize) {
-      const batch = vcardUrls.slice(i, i + batchSize);
-      console.log(`Lade optimierten Batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(vcardUrls.length/batchSize)} (${batch.length} vCards)`);
+    for (let i = 0; i < limitedVcardUrls.length; i += batchSize) {
+      const batch = limitedVcardUrls.slice(i, i + batchSize);
+      console.log(`Lade optimierten Batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(limitedVcardUrls.length/batchSize)} (${batch.length} vCards)`);
       
       // Lade Batch parallel mit optimierten Headers
       const batchPromises = batch.map(async (vcardUrl) => {
