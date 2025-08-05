@@ -327,59 +327,97 @@ class SimpleCardDAVClient {
       
       // OPTIMIERT: Verwende REPORT als primäre Methode für bessere Performance
       console.log('Sende REPORT Request für effiziente Kontakt-Abfrage...');
+      
+      // REPORT Body für CardDAV - lädt alle vCard-Daten in einem Request
       const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
         <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
           <d:prop>
             <d:getetag />
             <c:address-data />
           </d:prop>
+          <c:filter>
+            <c:prop-filter name="VERSION">
+              <c:text-match collation="i;octet">3.0</c:text-match>
+            </c:prop-filter>
+          </c:filter>
         </c:addressbook-query>`;
 
-      let response = await fetch(fullUrl, {
-        method: 'REPORT',
-        headers: {
-          'Authorization': `Basic ${this.credentials}`,
-          'Content-Type': 'application/xml',
-          'Depth': '1'
-        },
-        body: reportBody
-      });
+      try {
+        let response = await fetch(fullUrl, {
+          method: 'REPORT',
+          headers: {
+            'Authorization': `Basic ${this.credentials}`,
+            'Content-Type': 'application/xml',
+            'Depth': '1'
+          },
+          body: reportBody
+        });
 
-      if (!response.ok) {
-        console.log(`REPORT Request failed: ${response.status} ${response.statusText}, versuche PROPFIND...`);
-        
-        // Fallback zu PROPFIND
-        response = await fetch(fullUrl, {
+        if (response.ok) {
+          let xmlText = await response.text();
+          console.log('REPORT Response XML Länge:', xmlText.length);
+          console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+
+          // Parse Kontakte aus der REPORT Response
+          const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
+          console.log(`REPORT Kontakte geparst: ${contacts.length} für ${addressBookName}`);
+
+          // Wenn Kontakte gefunden wurden, cache und zurückgeben
+          if (contacts.length > 0) {
+            this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
+            return contacts;
+          }
+        } else {
+          console.log(`REPORT Request failed: ${response.status} ${response.statusText}`);
+        }
+      } catch (error) {
+        console.log('REPORT Request fehlgeschlagen:', error);
+      }
+
+      // Fallback zu PROPFIND mit card:address-data
+      console.log('Versuche PROPFIND mit card:address-data...');
+      const propfindWithDataBody = `<?xml version="1.0" encoding="utf-8" ?>
+        <d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+          <d:prop>
+            <d:getetag />
+            <card:address-data />
+          </d:prop>
+        </d:propfind>`;
+
+      try {
+        let response = await fetch(fullUrl, {
           method: 'PROPFIND',
           headers: {
             'Authorization': `Basic ${this.credentials}`,
             'Content-Type': 'application/xml',
             'Depth': '1'
           },
-          body: propfindBody
+          body: propfindWithDataBody
         });
 
-        if (!response.ok) {
-          throw new Error(`CardDAV Request failed: ${response.status} ${response.statusText}`);
+        if (response.ok) {
+          let xmlText = await response.text();
+          console.log('PROPFIND Response XML Länge:', xmlText.length);
+          console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+
+          // Parse Kontakte aus der PROPFIND Response
+          const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
+          console.log(`PROPFIND Kontakte geparst: ${contacts.length} für ${addressBookName}`);
+
+          // Wenn Kontakte gefunden wurden, cache und zurückgeben
+          if (contacts.length > 0) {
+            this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
+            return contacts;
+          }
+        } else {
+          console.log(`PROPFIND Request failed: ${response.status} ${response.statusText}`);
         }
+      } catch (error) {
+        console.log('PROPFIND Request fehlgeschlagen:', error);
       }
 
-      let xmlText = await response.text();
-      console.log('Response XML Länge:', xmlText.length);
-      console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
-
-      // Parse Kontakte aus der Response
-      const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
-      console.log(`Kontakte geparst: ${contacts.length} für ${addressBookName}`);
-
-      // Wenn Kontakte gefunden wurden, cache und zurückgeben
-      if (contacts.length > 0) {
-        this.contactsCache.set(addressBookName, { contacts, timestamp: Date.now() });
-        return contacts;
-      }
-
-      // Wenn keine Kontakte gefunden wurden, versuche direkte GET-Requests als letzte Option
-      console.log('Keine Kontakte in Response gefunden, verwende direkte GET-Requests...');
+      // Letzte Option: Direkte GET-Requests (langsam, aber funktioniert)
+      console.log('Keine Kontakte in REPORT/PROPFIND gefunden, verwende direkte GET-Requests...');
       const directContacts = await this.getContactsViaDirectRequests(fullUrl);
       
       if (directContacts.length > 0) {
