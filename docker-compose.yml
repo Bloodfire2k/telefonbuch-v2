@@ -7,10 +7,9 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      # Hier können die Umgebungsvariablen gesetzt werden
-      # - CARDAV_SERVER_URL=https://your-nextcloud-server.com
-      # - CARDAV_USERNAME=your-username
-      # - CARDAV_PASSWORD=your-password
-      # - USE_REAL_CARDAV=true
-      # - ALLOWED_ADDRESSBOOKS=Vertreter,Edeka Adressbuch,Handwerker
+      - CARDAV_SERVER_URL=https://nextcloud.ecenter-jochum.de/remote.php/dav/principals/users/kontakte/
+      - CARDAV_USERNAME=dein-username
+      - CARDAV_PASSWORD=dein-password
+      - USE_REAL_CARDAV=true
+      - ALLOWED_ADDRESSBOOKS=Vertreter,Edeka Adressbuch,Handwerker
     restart: unless-stopped 

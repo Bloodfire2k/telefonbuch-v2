@@ -33,6 +33,7 @@ export interface CardDAVAddressBook {
 
 class SimpleCardDAVClient {
   private serverUrl: string;
+  private baseUrl: string; // Neue Property für Base-URL
   private credentials: string;
   private allowedBooks: string[];
   private isConfigured: boolean = false;
@@ -42,6 +43,7 @@ class SimpleCardDAVClient {
 
   constructor() {
     this.serverUrl = '';
+    this.baseUrl = ''; // Initialisiere baseUrl
     this.credentials = '';
     this.allowedBooks = [];
     this.initializeConfig();
@@ -64,6 +66,17 @@ class SimpleCardDAVClient {
       if (this.serverUrl && username && password) {
         // Create base64 encoded credentials
         this.credentials = Buffer.from(`${username}:${password}`).toString('base64');
+        
+        // Extrahiere Base-URL aus serverUrl
+        try {
+          const url = new URL(this.serverUrl);
+          this.baseUrl = `${url.protocol}//${url.host}`;
+          console.log('Base-URL extrahiert:', this.baseUrl);
+        } catch (e) {
+          console.error('Fehler beim Parsen der CARDAV_SERVER_URL für baseUrl:', e);
+          this.baseUrl = ''; // Fallback
+        }
+        
         this.isConfigured = true;
         console.log('CardDAV konfiguriert - verwende echte Adressbücher');
       } else {
@@ -883,10 +896,10 @@ class SimpleCardDAVClient {
       if (hrefMatch) {
         const href = hrefMatch[1].trim();
         if (href.endsWith('.vcf')) {
-          // Konstruiere vollständige URL
+          // Konstruiere vollständige URL mit baseUrl
           const fullVcardUrl = href.startsWith('http') 
             ? href 
-            : `${this.serverUrl.split('/remote.php')[0]}${href}`;
+            : `${this.baseUrl}${href}`;
           vcardUrls.push(fullVcardUrl);
         }
       }
