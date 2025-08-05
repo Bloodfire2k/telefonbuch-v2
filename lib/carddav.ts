@@ -299,14 +299,7 @@ class SimpleCardDAVClient {
            </d:prop>
          </d:propfind>`;
 
-       // Alternative: REPORT request für bessere Kompatibilität
-       const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
-         <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
-           <d:prop>
-             <d:getetag />
-             <c:address-data />
-           </d:prop>
-         </c:addressbook-query>`;
+       // REPORT request für effiziente Kontakt-Abfrage (wird später definiert)
 
       // Lade die echten Adressbücher, um die URL zu finden
       console.log(`Debug: Lade Adressbücher für ${addressBookName}...`);
@@ -330,73 +323,56 @@ class SimpleCardDAVClient {
          console.log(`Debug: Verwende Fallback-URL: ${fullUrl}`);
        }
       
-             console.log(`Versuche Kontakte zu laden von: ${fullUrl}`);
-       
-       // Versuche zuerst PROPFIND
-       let response = await fetch(fullUrl, {
-         method: 'PROPFIND',
-         headers: {
-           'Authorization': `Basic ${this.credentials}`,
-           'Content-Type': 'application/xml',
-           'Depth': '1'
-         },
-         body: propfindBody
-       });
+                   console.log(`Versuche Kontakte zu laden von: ${fullUrl}`);
+      
+      // OPTIMIERT: Verwende REPORT als primäre Methode für bessere Performance
+      console.log('Sende REPORT Request für effiziente Kontakt-Abfrage...');
+      const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
+        <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
+          <d:prop>
+            <d:getetag />
+            <c:address-data />
+          </d:prop>
+        </c:addressbook-query>`;
 
-       if (!response.ok) {
-         throw new Error(`CardDAV Request failed: ${response.status} ${response.statusText}`);
-       }
+      let response = await fetch(fullUrl, {
+        method: 'REPORT',
+        headers: {
+          'Authorization': `Basic ${this.credentials}`,
+          'Content-Type': 'application/xml',
+          'Depth': '1'
+        },
+        body: reportBody
+      });
 
-       let xmlText = await response.text();
-       console.log('PROPFIND Response XML (vollständig):', xmlText);
-       console.log('XML Länge:', xmlText.length);
-       console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+      if (!response.ok) {
+        console.log(`REPORT Request failed: ${response.status} ${response.statusText}, versuche PROPFIND...`);
+        
+        // Fallback zu PROPFIND
+        response = await fetch(fullUrl, {
+          method: 'PROPFIND',
+          headers: {
+            'Authorization': `Basic ${this.credentials}`,
+            'Content-Type': 'application/xml',
+            'Depth': '1'
+          },
+          body: propfindBody
+        });
 
-               // Wenn keine vCard-Daten gefunden wurden, versuche REPORT
-        if (!xmlText.includes('card:address-data')) {
-          console.log('Keine vCard-Daten in PROPFIND gefunden, versuche REPORT...');
-          const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
-            <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
-              <d:prop>
-                <d:getetag />
-                <c:address-data />
-              </d:prop>
-            </c:addressbook-query>`;
-
-          try {
-            console.log('Sende REPORT Request an:', fullUrl);
-            response = await fetch(fullUrl, {
-              method: 'REPORT',
-              headers: {
-                'Authorization': `Basic ${this.credentials}`,
-                'Content-Type': 'application/xml',
-                'Depth': '1'
-              },
-              body: reportBody
-            });
-
-                         if (!response.ok) {
-               console.log(`REPORT Request failed: ${response.status} ${response.statusText}`);
-               throw new Error(`REPORT Request failed: ${response.status} ${response.statusText}`);
-             } else {
-               xmlText = await response.text();
-               console.log('REPORT Response XML (vollständig):', xmlText);
-               console.log('XML Länge:', xmlText.length);
-               console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
-               
-               // Wenn auch REPORT keine vCard-Daten liefert, verwende direkte GET-Requests
-               if (!xmlText.includes('card:address-data')) {
-                 console.log('Auch REPORT liefert keine vCard-Daten, verwende direkte GET-Requests...');
-                 return await this.getContactsViaDirectRequests(fullUrl);
-               }
-             }
-          } catch (error) {
-            console.log('REPORT Request fehlgeschlagen:', error);
-            // Wenn REPORT fehlschlägt, versuche direkte GET-Requests für jede vCard-Datei
-            console.log('Versuche direkte GET-Requests für vCard-Dateien...');
-            return await this.getContactsViaDirectRequests(fullUrl);
-          }
+        if (!response.ok) {
+          throw new Error(`CardDAV Request failed: ${response.status} ${response.statusText}`);
         }
+      }
+
+      let xmlText = await response.text();
+      console.log('Response XML Länge:', xmlText.length);
+      console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+
+      // Wenn keine vCard-Daten gefunden wurden, verwende direkte GET-Requests als letzte Option
+      if (!xmlText.includes('card:address-data')) {
+        console.log('Keine vCard-Daten in Response gefunden, verwende direkte GET-Requests...');
+        return await this.getContactsViaDirectRequests(fullUrl);
+      }
        
                       const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
         
