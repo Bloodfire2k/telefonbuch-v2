@@ -339,40 +339,45 @@ class SimpleCardDAVClient {
        console.log('XML Länge:', xmlText.length);
        console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
 
-       // Wenn keine vCard-Daten gefunden wurden, versuche REPORT
-       if (!xmlText.includes('card:address-data')) {
-         console.log('Keine vCard-Daten in PROPFIND gefunden, versuche REPORT...');
-         const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
-           <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
-             <d:prop>
-               <d:getetag />
-               <c:address-data />
-             </d:prop>
-           </c:addressbook-query>`;
+               // Wenn keine vCard-Daten gefunden wurden, versuche REPORT
+        if (!xmlText.includes('card:address-data')) {
+          console.log('Keine vCard-Daten in PROPFIND gefunden, versuche REPORT...');
+          const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
+            <c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
+              <d:prop>
+                <d:getetag />
+                <c:address-data />
+              </d:prop>
+            </c:addressbook-query>`;
 
-         try {
-           response = await fetch(fullUrl, {
-             method: 'REPORT',
-             headers: {
-               'Authorization': `Basic ${this.credentials}`,
-               'Content-Type': 'application/xml',
-               'Depth': '1'
-             },
-             body: reportBody
-           });
+          try {
+            console.log('Sende REPORT Request an:', fullUrl);
+            response = await fetch(fullUrl, {
+              method: 'REPORT',
+              headers: {
+                'Authorization': `Basic ${this.credentials}`,
+                'Content-Type': 'application/xml',
+                'Depth': '1'
+              },
+              body: reportBody
+            });
 
-           if (!response.ok) {
-             console.log(`REPORT Request failed: ${response.status} ${response.statusText}`);
-           } else {
-             xmlText = await response.text();
-             console.log('REPORT Response XML (vollständig):', xmlText);
-             console.log('XML Länge:', xmlText.length);
-             console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
-           }
-         } catch (error) {
-           console.log('REPORT Request fehlgeschlagen:', error);
-         }
-       }
+            if (!response.ok) {
+              console.log(`REPORT Request failed: ${response.status} ${response.statusText}`);
+              throw new Error(`REPORT Request failed: ${response.status} ${response.statusText}`);
+            } else {
+              xmlText = await response.text();
+              console.log('REPORT Response XML (vollständig):', xmlText);
+              console.log('XML Länge:', xmlText.length);
+              console.log('Enthält card:address-data:', xmlText.includes('card:address-data'));
+            }
+          } catch (error) {
+            console.log('REPORT Request fehlgeschlagen:', error);
+            // Wenn REPORT fehlschlägt, versuche direkte GET-Requests für jede vCard-Datei
+            console.log('Versuche direkte GET-Requests für vCard-Dateien...');
+            return await this.getContactsViaDirectRequests(fullUrl);
+          }
+        }
        
               const contacts = this.parseContactsFromXML(xmlText, targetAddressBook?.url || '');
        
@@ -779,6 +784,91 @@ class SimpleCardDAVClient {
       .replace(/[\r\n]/g, ' ') // Einzelne Zeilenendezeichen durch Leerzeichen ersetzen
       .replace(/\s+/g, ' ') // Mehrfache Leerzeichen durch einzelnes ersetzen
       .trim(); // Führende und nachfolgende Leerzeichen entfernen
+  }
+
+  private async getContactsViaDirectRequests(addressBookUrl: string): Promise<CardDAVContact[]> {
+    console.log('Lade Kontakte via direkte GET-Requests...');
+    
+    // Zuerst PROPFIND um alle vCard-Dateien zu finden
+    const propfindBody = `<?xml version="1.0" encoding="utf-8" ?>
+      <d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+        <d:prop>
+          <d:getetag />
+        </d:prop>
+      </d:propfind>`;
+
+    const response = await fetch(addressBookUrl, {
+      method: 'PROPFIND',
+      headers: {
+        'Authorization': `Basic ${this.credentials}`,
+        'Content-Type': 'application/xml',
+        'Depth': '1'
+      },
+      body: propfindBody
+    });
+
+    if (!response.ok) {
+      throw new Error(`PROPFIND Request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const xmlText = await response.text();
+    console.log('PROPFIND Response für direkte Requests:', xmlText.substring(0, 500) + '...');
+
+    // Extrahiere alle vCard-Datei-URLs
+    const vcardUrls: string[] = [];
+    const responseRegex = /<d:response[^>]*>(.*?)<\/d:response>/gs;
+    let match;
+
+    while ((match = responseRegex.exec(xmlText)) !== null) {
+      const responseContent = match[1];
+      const hrefMatch = responseContent.match(/<d:href[^>]*>(.*?)<\/d:href>/);
+      
+      if (hrefMatch) {
+        const href = hrefMatch[1].trim();
+        if (href.endsWith('.vcf')) {
+          // Konstruiere vollständige URL
+          const fullVcardUrl = href.startsWith('http') 
+            ? href 
+            : `${this.serverUrl.split('/remote.php')[0]}${href}`;
+          vcardUrls.push(fullVcardUrl);
+        }
+      }
+    }
+
+    console.log(`Gefundene vCard-Dateien: ${vcardUrls.length}`);
+
+    // Lade jede vCard-Datei einzeln
+    const contacts: CardDAVContact[] = [];
+    for (const vcardUrl of vcardUrls.slice(0, 10)) { // Limitiere auf 10 für Test
+      try {
+        console.log('Lade vCard von:', vcardUrl);
+        const vcardResponse = await fetch(vcardUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${this.credentials}`,
+            'Accept': 'text/vcard'
+          }
+        });
+
+        if (vcardResponse.ok) {
+          const vcardText = await vcardResponse.text();
+          console.log('vCard Inhalt:', vcardText.substring(0, 200) + '...');
+          
+          const contact = this.parseVCard(vcardText, vcardUrl);
+          if (contact.name !== 'Unbekannt') {
+            contacts.push(contact);
+            console.log('Kontakt hinzugefügt:', contact.name);
+          }
+        } else {
+          console.log(`Fehler beim Laden von ${vcardUrl}: ${vcardResponse.status}`);
+        }
+      } catch (error) {
+        console.log(`Fehler beim Laden von ${vcardUrl}:`, error);
+      }
+    }
+
+    console.log(`Insgesamt ${contacts.length} Kontakte via direkte Requests geladen`);
+    return contacts;
   }
 
   private getDemoContacts(addressBookName: string): CardDAVContact[] {
