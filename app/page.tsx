@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import ContactCard from '@/components/ContactCard';
 import SearchBar from '@/components/SearchBar';
 import SummaryCards from '@/components/SummaryCards';
-import AddressBookSelector from '@/components/AddressBookSelector';
 
 interface Contact {
   id: string;
@@ -27,21 +26,16 @@ interface AddressBook {
 export default function Home() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
-  const [addressBooks, setAddressBooks] = useState<AddressBook[]>([]);
-  const [selectedAddressBook, setSelectedAddressBook] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadContacts = async (addressBookName?: string | null) => {
+  const loadContacts = async () => {
     setIsLoading(true);
     setError(null);
     
     try {
       const params = new URLSearchParams();
-      if (addressBookName) {
-        params.append('addressBook', addressBookName);
-      }
       if (searchTerm) {
         params.append('search', searchTerm);
       }
@@ -52,7 +46,6 @@ export default function Home() {
       if (data.success) {
         setContacts(data.contacts);
         setFilteredContacts(data.contacts);
-        setAddressBooks(data.addressBooks);
         console.log(`${data.contacts.length} Kontakte geladen`);
       } else {
         setError(data.error || 'Fehler beim Laden der Kontakte');
@@ -84,10 +77,7 @@ export default function Home() {
     }
   };
 
-  const handleAddressBookSelect = (addressBookName: string | null) => {
-    setSelectedAddressBook(addressBookName);
-    loadContacts(addressBookName);
-  };
+
 
   useEffect(() => {
     loadContacts();
@@ -121,14 +111,7 @@ export default function Home() {
           <p className="text-gray-600">Schneller Zugriff auf alle Kontakte</p>
         </div>
 
-        {/* Adressbuch-Auswahl */}
-        {addressBooks.length > 0 && (
-          <AddressBookSelector
-            addressBooks={addressBooks}
-            selectedAddressBook={selectedAddressBook}
-            onAddressBookSelect={handleAddressBookSelect}
-          />
-        )}
+
 
         {/* Statistiken */}
         <SummaryCards contacts={filteredContacts} />
