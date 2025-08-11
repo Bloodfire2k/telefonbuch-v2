@@ -9,6 +9,10 @@ export async function GET(request: NextRequest) {
     const addressBooks = await cardDAVClient.getAddressBooks();
     console.log('DEBUG: Gefundene Adressbücher:', addressBooks);
     
+    // Zeige Cache-Status
+    const cacheStatus = cardDAVClient.getCacheStatus();
+    console.log('DEBUG: Cache-Status:', cacheStatus);
+    
     // Teste Kontakte laden für das erste Adressbuch
     if (addressBooks.length > 0) {
       const firstBook = addressBooks[0];
@@ -18,19 +22,25 @@ export async function GET(request: NextRequest) {
       const contacts = await cardDAVClient.getContacts(firstBook.displayName);
       console.log('DEBUG: Kontakte geladen:', contacts.length);
       
+      // Zeige Cache-Status nach dem Laden
+      const cacheStatusAfter = cardDAVClient.getCacheStatus();
+      console.log('DEBUG: Cache-Status nach dem Laden:', cacheStatusAfter);
+      
       return NextResponse.json({
         success: true,
         addressBooks,
         testBook: firstBook,
         contactsLoaded: contacts.length,
-        sampleContact: contacts[0] || null
+        sampleContact: contacts[0] || null,
+        cacheStatus: cacheStatusAfter
       });
     }
     
     return NextResponse.json({
       success: true,
       addressBooks,
-      message: 'Keine Adressbücher gefunden'
+      message: 'Keine Adressbücher gefunden',
+      cacheStatus
     });
     
   } catch (error) {

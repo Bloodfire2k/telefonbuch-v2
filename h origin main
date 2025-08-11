@@ -1,5 +1,0 @@
-[33m1ba317f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m EINFACHE & FUNKTIONIERENDE CardDAV-Lösung: Eine bewährte PROPFIND-Methode für Nextcloud
-[33m09ce5b3[m DEBUG: Erweiterte Fehlerdiagnose und Fallback-Methoden für CardDAV
-[33m104540f[m EINFACHE & EFFIZIENTE CardDAV-Implementierung: Schnelle Ladezeiten und Adressbuch-Auswahl
-[33m32f86d6[m INTELLIGENTE Performance-Optimierung: Adaptive Batch-Größen für optimale Ladezeiten
-[33m9ea4ad9[m ULTRASCHNELLE Performance-Optimierung: Lade alle 2960 Kontakte parallel auf einmal statt in 60 kleinen Batches

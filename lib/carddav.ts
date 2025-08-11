@@ -287,7 +287,7 @@ class SimpleCardDAVClient {
       // Check cache - aber nur wenn wir echte vCard-Daten haben
       const cacheEntry = this.contactsCache.get(addressBookName);
       if (cacheEntry && Date.now() - cacheEntry.timestamp < this.CACHE_DURATION && cacheEntry.contacts.length > 0) {
-        console.log(`Cache hit for ${addressBookName} (${cacheEntry.contacts.length} Kontakte)`);
+        console.log(`CACHE HIT: Verwende gecachte Kontakte für ${addressBookName} (${cacheEntry.contacts.length} Kontakte, Alter: ${Math.round((Date.now() - cacheEntry.timestamp) / 1000)}s)`);
         return cacheEntry.contacts;
       }
       
@@ -1254,6 +1254,11 @@ class SimpleCardDAVClient {
       this.contactsCache.clear();
       console.log('Kompletter Cache geleert');
     }
+  }
+
+  clearAllCaches(): void {
+    this.contactsCache.clear();
+    console.log('Alle Caches geleert (Hintergrund-Sync)');
   }
 
   getCacheStatus(): { [key: string]: { contactCount: number, age: string } } {

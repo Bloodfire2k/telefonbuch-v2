@@ -31,6 +31,7 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [backgroundSyncStatus, setBackgroundSyncStatus] = useState<{ isRunning: boolean; intervalId: string } | null>(null);
 
   const loadContacts = async (addressBookName?: string | null) => {
     setIsLoading(true);
@@ -88,8 +89,53 @@ export default function Home() {
     loadContacts(addressBookName);
   };
 
+  const handleClearCache = async () => {
+    try {
+      // Cache für alle Adressbücher leeren
+      const response = await fetch('/api/contacts?clearCache=true');
+      if (response.ok) {
+        console.log('Cache für alle Adressbücher geleert');
+        // Kontakte neu laden
+        loadContacts(selectedAddressBook);
+      }
+    } catch (err) {
+      console.error('Fehler beim Leeren des Caches:', err);
+    }
+  };
+
+  const handleBackgroundSync = async (action: 'start' | 'stop') => {
+    try {
+      const response = await fetch('/api/background-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, intervalMinutes: 3 })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(data.message);
+        setBackgroundSyncStatus(data.status);
+      }
+    } catch (err) {
+      console.error('Fehler beim Hintergrund-Sync:', err);
+    }
+  };
+
+  const loadBackgroundSyncStatus = async () => {
+    try {
+      const response = await fetch('/api/background-sync');
+      if (response.ok) {
+        const data = await response.json();
+        setBackgroundSyncStatus(data.status);
+      }
+    } catch (err) {
+      console.error('Fehler beim Laden des Sync-Status:', err);
+    }
+  };
+
   useEffect(() => {
     loadContacts();
+    loadBackgroundSyncStatus();
   }, []);
 
   if (error) {
@@ -116,8 +162,32 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Telefonbuch</h1>
-          <p className="text-gray-600">Schneller Zugriff auf alle Kontakte</p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Telefonbuch</h1>
+              <p className="text-gray-600">Schneller Zugriff auf alle Kontakte</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleClearCache}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                title="Cache leeren und Kontakte neu laden"
+              >
+                Cache leeren
+              </button>
+              <button
+                onClick={() => handleBackgroundSync(backgroundSyncStatus?.isRunning ? 'stop' : 'start')}
+                className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                  backgroundSyncStatus?.isRunning 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-green-600 hover:bg-green-700 text-white'
+                }`}
+                title={backgroundSyncStatus?.isRunning ? 'Hintergrund-Sync stoppen' : 'Hintergrund-Sync starten (alle 3 Minuten)'}
+              >
+                {backgroundSyncStatus?.isRunning ? 'Sync stoppen' : 'Auto-Sync starten'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Adressbuch-Auswahl */}

@@ -1,5 +1,0 @@
-[33md71fc85[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Verbessere CardDAV Performance: Mehrere Export-URLs, kleinere Batches, bessere Fehlerbehandlung
-[33m1a854f9[m Fix allowedBooks check to be more flexible with address book name matching
-[33m8b483f4[m Fix address book filtering with improved mapping and debug logs
-[33mc433860[m Fix debug route to handle new getContacts return type
-[33ma7b36dd[m Implement address book filtering functionality - Make address book banners clickable to filter contacts - Add selectedAddressBook state management - Update API to accept addressBookName parameter - Add getContactsFromAddressBook method - Fix searchContacts method to handle new return type

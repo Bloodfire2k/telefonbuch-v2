@@ -8,8 +8,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const addressBookName = searchParams.get('addressBook');
     const searchTerm = searchParams.get('search') || '';
+    const clearCache = searchParams.get('clearCache') === 'true';
 
-    console.log(`API: Lade Kontakte${addressBookName ? ` für Adressbuch "${addressBookName}"` : ''}${searchTerm ? ` mit Suche "${searchTerm}"` : ''}`);
+    console.log(`API: Lade Kontakte${addressBookName ? ` für Adressbuch "${addressBookName}"` : ''}${searchTerm ? ` mit Suche "${searchTerm}"` : ''}${clearCache ? ' (Cache geleert)' : ''}`);
+
+    // Cache leeren falls gewünscht
+    if (clearCache && addressBookName) {
+      cardDAVClient.clearCache(addressBookName);
+      console.log(`Cache für "${addressBookName}" geleert`);
+    }
 
     // Lade Adressbücher für die UI
     const addressBooks = await cardDAVClient.getAddressBooks();
